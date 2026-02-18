@@ -236,7 +236,8 @@ async fn init() -> anyhow::Result<()> {
                 let (analyser, analyser_buf) = audio::create_analyser(&audio_ctx);
 
                 // Queued ripple UV from pointer taps (read by render tick)
-                let queued_ripple_uv: Rc<RefCell<Option<[f32; 2]>>> = Rc::new(RefCell::new(None));
+                let queued_ripple_uv: Rc<RefCell<Option<input::RippleEvent>>> =
+                    Rc::new(RefCell::new(None));
 
                 // ---------------- Interaction state ----------------
                 let mouse_state = Rc::new(RefCell::new(input::MouseState::default()));

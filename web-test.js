@@ -143,14 +143,14 @@ async function gotoWithRetry(
       throw new Error("missing master mute= false log");
     // Muted state no longer shown in hint; rely on logs only
 
-    // Click center to trigger a gesture burst
+    // Click center to trigger a gesture flare
     await page.mouse.move(box.x, box.y);
     await page.mouse.click(box.x, box.y);
     await new Promise((r) => setTimeout(r, 120));
-    if (!logs.some((l) => /\[gesture\] burst uv=\([0-9.]+,[0-9.]+\)/.test(l)))
-      throw new Error("missing gesture burst log");
+    if (!logs.some((l) => /\[gesture\] flare uv=\([0-9.]+,[0-9.]+\)/.test(l)))
+      throw new Error("missing gesture flare log");
 
-    // Drag sweep should start and apply a new phrase/root+mode on release
+    // Drag carve should start and commit a carve drop on release
     await page.mouse.move(box.x - 90, box.y + 70);
     await page.mouse.down();
     await new Promise((r) => setTimeout(r, 50));
@@ -159,16 +159,16 @@ async function gotoWithRetry(
     await page.mouse.up();
     await new Promise((r) => setTimeout(r, 120));
 
-    if (!logs.some((l) => l.includes("[gesture] begin sweep")))
-      throw new Error("missing gesture begin sweep log");
+    if (!logs.some((l) => l.includes("[gesture] carve begin")))
+      throw new Error("missing gesture carve begin log");
     if (
       !logs.some((l) =>
-        /\[gesture\] sweep apply root=\d+ mode=.* bpm=[0-9.]+ detune=-?[0-9]+/.test(
+        /\[gesture\] carve drop root=\d+ mode=.* travel=[0-9.]+px spin=-?[0-9.]+/.test(
           l
         )
       )
     )
-      throw new Error("missing gesture sweep apply log");
+      throw new Error("missing gesture carve drop log");
 
     // Test G key support (new functionality)
     await page.keyboard.press("KeyG");

@@ -334,7 +334,7 @@ impl<'a> GpuState<'a> {
 
     pub fn set_ripple(&mut self, uv: [f32; 2], amp: f32) {
         self.ripple_uv = uv;
-        self.ripple_amp = amp.clamp(0.0, 1.5);
+        self.ripple_amp = amp.clamp(0.0, 2.8);
         // Anchor ripple start to current accumulated time so shader can compute age
         self.ripple_t0 = self.time_accum;
     }

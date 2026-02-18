@@ -85,8 +85,10 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     let swirl_center = (u.swirl_uv - 0.5) * vec2<f32>(aspect, 1.0);
     let dv_swirl = p - swirl_center;
     let swirl_r = length(dv_swirl);
-    let swirl_ang = u.swirl_active * u.swirl_strength * 1.55 * exp(-2.1 * swirl_r);
+    let swirl_ang = u.swirl_active * u.swirl_strength * 2.35 * exp(-1.75 * swirl_r);
     p = swirl_center + rot(swirl_ang) * dv_swirl;
+    let swirl_pull = u.swirl_active * u.swirl_strength * 0.08 * exp(-3.0 * swirl_r);
+    p -= normalize(dv_swirl + vec2<f32>(1e-4, -1e-4)) * swirl_pull;
 
     // Kaleidoscope fold (12 sectors) produces a faceted look unlike wave fields.
     let sector = tau / 12.0;
@@ -170,7 +172,10 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     let age = max(0.0, t - u.ripple_t0);
     let ring = sin(24.0 * rr - 8.5 * age);
     let ring_env = u.ripple_amp * exp(-1.7 * age) * exp(-4.8 * rr);
-    col += vec3<f32>(0.98, 0.88, 0.72) * ring * ring_env * 0.30;
+    col += vec3<f32>(0.98, 0.88, 0.72) * ring * ring_env * 0.52;
+    let ray_ang = atan2(rv.y, rv.x);
+    let rays = pow(abs(cos(ray_ang * 11.0 - age * 6.2)), 15.0);
+    col += vec3<f32>(0.82, 0.96, 1.00) * rays * exp(-3.0 * rr) * u.ripple_amp * exp(-1.25 * age) * 0.56;
 
     let vignette = 1.0 - smoothstep(0.34, 1.10, length((uv - 0.5) * vec2<f32>(1.2, 1.0)));
     col *= mix(0.58, 1.06, vignette);

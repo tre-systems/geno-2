@@ -13,7 +13,7 @@ Geno-2 is a new branch of the Geno concept with the same technology stack but a 
 ## What Is Different From Geno-1
 
 - New rhythm engine: polymetric/euclidean phrase logic with motif-led register motion
-- New interaction model: click creates burst chords, drag performs gestural tempo/detune/space sweeps
+- New interaction model: click triggers flare stacks, hold+drag carves the field with shockwaves and reseeding
 - New FX tone: louder output, tighter room tail, quicker delay, waveform-shaped envelopes
 - New visual direction: geometric kaleidoscope lattice + print-like post grade (not wave sheets)
 - Restyled overlay/theme for project identity
@@ -34,9 +34,9 @@ Geno-2 is a new branch of the Geno concept with the same technology stack but a 
 - `M`: mute/unmute
 - `Enter` / `Esc`: fullscreen
 - `H`: toggle help panel
-- `Click`: trigger burst chord at cursor
-- `Drag`: morph tempo/detune and rotate voice geometry
-- `Release after drag`: commit new root + mode + phrase reseed
+- `Click`: trigger a flare chord stack + strong visual shockwave
+- `Hold + Drag`: carve the field (heavy warp, reseeds, dense ripples)
+- `Release after drag`: drop carve into new root + mode + impact accents
 
 ## Local Development
 

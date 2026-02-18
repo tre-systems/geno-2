@@ -11,6 +11,9 @@ pub struct MouseState {
     pub x: f32,
     pub y: f32,
     pub down: bool,
+    pub gesture_energy: f32,
+    pub gesture_flash: f32,
+    pub gesture_spin: f32,
 }
 #[derive(Default, Clone, Copy)]
 pub struct DragState {
@@ -22,6 +25,17 @@ pub struct DragState {
     pub start_y: f32,
     pub last_x: f32,
     pub last_y: f32,
+    pub travel_px: f32,
+    pub spin_accum: f32,
+    pub peak_motion: f32,
+    pub last_ripple_travel: f32,
+    pub last_reseed_time: f64,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct RippleEvent {
+    pub uv: [f32; 2],
+    pub amp: f32,
 }
 #[inline]
 pub fn ray_sphere(ray_origin: Vec3, ray_dir: Vec3, center: Vec3, radius: f32) -> Option<f32> {

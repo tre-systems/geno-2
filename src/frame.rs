@@ -40,7 +40,7 @@ pub struct FrameContext<'a> {
     pub analyser_buf: Rc<RefCell<Vec<f32>>>,
 
     pub gpu: Option<render::GpuState<'a>>,
-    pub queued_ripple_uv: Rc<RefCell<Option<[f32; 2]>>>,
+    pub queued_ripple_uv: Rc<RefCell<Option<input::RippleEvent>>>,
 
     pub last_instant: Instant,
     pub prev_uv: [f32; 2],
@@ -79,11 +79,20 @@ impl<'a> FrameContext<'a> {
             }; // drop pulses_ref here
 
             // Swirl input and energy (no RefCell borrow active)
-            let ms = self.mouse.borrow();
-            let uv = input::mouse_uv(&self.canvas, &ms);
-            let mouse_down = ms.down;
-            drop(ms);
-            self.update_swirl(uv, dt_sec, mouse_down);
+            let (uv, mouse_down, gesture_energy, gesture_flash, gesture_spin) = {
+                let mut ms = self.mouse.borrow_mut();
+                ms.gesture_energy *= (-dt_sec * 1.55).exp();
+                ms.gesture_flash = (ms.gesture_flash - dt_sec * 0.95).max(0.0);
+                ms.gesture_spin *= (-dt_sec * 2.20).exp();
+                (
+                    input::mouse_uv(&self.canvas, &ms),
+                    ms.down,
+                    ms.gesture_energy,
+                    ms.gesture_flash,
+                    ms.gesture_spin.abs(),
+                )
+            };
+            self.update_swirl(uv, dt_sec, mouse_down, gesture_energy, gesture_spin);
 
             // Global FX modulation
             apply_global_fx_swirl(
@@ -94,6 +103,7 @@ impl<'a> FrameContext<'a> {
                 &self.sat_wet,
                 &self.sat_dry,
                 self.swirl_energy,
+                gesture_flash,
                 uv,
             );
 
@@ -123,6 +133,10 @@ impl<'a> FrameContext<'a> {
                 self.voice_gains[i].gain().set_value(lvl);
             }
 
+            let mut ambient_hint =
+                (0.22 * self.swirl_energy + 0.48 * gesture_flash + 0.30 * gesture_energy)
+                    .clamp(0.0, 1.0);
+
             // Optional analyser-driven ambient energy
             if let Some(a) = &self.analyser {
                 let bins = a.frequency_bin_count() as usize;
@@ -149,9 +163,7 @@ impl<'a> FrameContext<'a> {
                         pulses_ref[i] = (pulses_ref[i] + avg * 0.05).min(1.5);
                     }
                 }
-                if let Some(g) = &mut self.gpu {
-                    g.set_ambient_clear(avg * 0.9);
-                }
+                ambient_hint = (avg * 0.74 + 0.26 * ambient_hint).clamp(0.0, 1.0);
             }
 
             // Voice positions are now only used for audio spatialization and wave displacement
@@ -163,15 +175,21 @@ impl<'a> FrameContext<'a> {
 
             if let Some(g) = &mut self.gpu {
                 g.set_camera(cam_eye, cam_target);
-                if let Some(uvr) = self.queued_ripple_uv.borrow_mut().take() {
-                    g.set_ripple(uvr, 1.0);
+                g.set_ambient_clear(ambient_hint);
+                if let Some(ripple) = self.queued_ripple_uv.borrow_mut().take() {
+                    g.set_ripple(ripple.uv, ripple.amp);
                 }
                 let speed_norm = ((self.swirl_vel[0] * self.swirl_vel[0]
                     + self.swirl_vel[1] * self.swirl_vel[1])
                     .sqrt()
                     / 1.0)
                     .clamp(0.0, 1.0);
-                let strength = 0.18 + 0.64 * self.swirl_energy + 0.24 * speed_norm;
+                let strength = (0.18
+                    + 0.62 * self.swirl_energy
+                    + 0.26 * speed_norm
+                    + 0.60 * gesture_energy
+                    + 0.34 * gesture_flash)
+                    .clamp(0.0, 2.4);
                 g.set_swirl(self.swirl_pos, strength, true);
                 let w = self.canvas.width();
                 let h = self.canvas.height();
@@ -229,7 +247,14 @@ impl<'a> FrameContext<'a> {
 }
 
 impl<'a> FrameContext<'a> {
-    fn update_swirl(&mut self, uv: [f32; 2], dt_sec: f32, mouse_down: bool) {
+    fn update_swirl(
+        &mut self,
+        uv: [f32; 2],
+        dt_sec: f32,
+        mouse_down: bool,
+        gesture_energy: f32,
+        gesture_spin: f32,
+    ) {
         step_inertial_swirl(
             &mut self.swirl_initialized,
             &mut self.swirl_pos,
@@ -244,6 +269,8 @@ impl<'a> FrameContext<'a> {
             (self.swirl_vel[0] * self.swirl_vel[0] + self.swirl_vel[1] * self.swirl_vel[1]).sqrt();
         let target = ((pointer_speed * SWIRL_TARGET_WEIGHT_POINTER)
             + (swirl_speed * SWIRL_TARGET_WEIGHT_VELOCITY)
+            + 0.58 * gesture_energy
+            + 0.24 * gesture_spin
             + if mouse_down {
                 SWIRL_TARGET_CLICK_BONUS
             } else {
@@ -371,26 +398,33 @@ fn apply_global_fx_swirl(
     sat_wet: &web::GainNode,
     sat_dry: &web::GainNode,
     swirl_energy: f32,
+    gesture_flash: f32,
     uv: [f32; 2],
 ) {
-    _ = reverb_wet
-        .gain()
-        .set_value(FX_REVERB_BASE + FX_REVERB_SPAN * swirl_energy);
+    _ = reverb_wet.gain().set_value(
+        (FX_REVERB_BASE + FX_REVERB_SPAN * swirl_energy + 0.18 * gesture_flash).clamp(0.0, 1.2),
+    );
     let echo = ((uv[0] - uv[1]).abs() * 0.85 + (uv[0] * uv[1]).sqrt() * 0.15).clamp(0.0, 1.0);
-    let delay_wet_val =
-        (FX_DELAY_WET_BASE + FX_DELAY_WET_SWIRL * swirl_energy + FX_DELAY_WET_ECHO * echo)
-            .clamp(0.0, 1.0);
-    let delay_fb_val =
-        (FX_DELAY_FB_BASE + FX_DELAY_FB_SWIRL * swirl_energy + FX_DELAY_FB_ECHO * echo)
-            .clamp(0.0, 0.95);
+    let delay_wet_val = (FX_DELAY_WET_BASE
+        + FX_DELAY_WET_SWIRL * swirl_energy
+        + FX_DELAY_WET_ECHO * echo
+        + 0.26 * gesture_flash)
+        .clamp(0.0, 1.0);
+    let delay_fb_val = (FX_DELAY_FB_BASE
+        + FX_DELAY_FB_SWIRL * swirl_energy
+        + FX_DELAY_FB_ECHO * echo
+        + 0.14 * gesture_flash)
+        .clamp(0.0, 0.95);
     _ = delay_wet.gain().set_value(delay_wet_val);
     _ = delay_feedback.gain().set_value(delay_fb_val);
-    let fizz = (0.65 * swirl_energy + 0.35 * (uv[0] * (1.0 - uv[1]))).clamp(0.0, 1.0);
+    let fizz = (0.55 * swirl_energy + 0.25 * (uv[0] * (1.0 - uv[1])) + 0.35 * gesture_flash)
+        .clamp(0.0, 1.0);
     let drive = (FX_SAT_DRIVE_MIN + (FX_SAT_DRIVE_MAX - FX_SAT_DRIVE_MIN) * fizz)
         .clamp(FX_SAT_DRIVE_MIN, FX_SAT_DRIVE_MAX);
     _ = sat_pre.gain().set_value(drive);
-    let wet =
-        (FX_SAT_WET_BASE + FX_SAT_WET_SPAN * (0.55 * fizz + 0.45 * swirl_energy)).clamp(0.0, 1.0);
+    let wet = (FX_SAT_WET_BASE
+        + FX_SAT_WET_SPAN * (0.50 * fizz + 0.35 * swirl_energy + 0.35 * gesture_flash))
+        .clamp(0.0, 1.0);
     _ = sat_wet.gain().set_value(wet);
     _ = sat_dry.gain().set_value(1.0 - wet);
 }

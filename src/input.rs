@@ -15,8 +15,11 @@ pub struct MouseState {
 #[derive(Default, Clone, Copy)]
 pub struct DragState {
     pub active: bool,
+    pub pending: bool,
     pub voice: usize,
     pub plane_z_world: f32,
+    pub start_x: f32,
+    pub start_y: f32,
 }
 #[inline]
 pub fn ray_sphere(ray_origin: Vec3, ray_dir: Vec3, center: Vec3, radius: f32) -> Option<f32> {

@@ -1,0 +1,22 @@
+name = "geno-2"
+compatibility_date = "2024-08-06"
+compatibility_flags = ["nodejs_compat"]
+main = "worker.js"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "single-page-application"
+
+[vars]
+ENVIRONMENT = "private"
+
+[build]
+command = "npm run build"
+
+[dev]
+port = 8787
+local_protocol = "http"
+upstream_protocol = "https"

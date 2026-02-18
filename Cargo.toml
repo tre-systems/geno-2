@@ -1,0 +1,61 @@
+[package]
+name = "app-web"
+version = "1.2.0"
+edition = "2021"
+license = "MIT"
+description = "Geno-2 audiovisual engine (Rust/WASM/WebGPU/WebAudio)"
+repository = "https://github.com/rgilks/geno-2"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+
+[dependencies]
+anyhow = "1.0"
+log = "0.4"
+console_log = { version = "1.0", features = ["color"] }
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+  "Window",
+  "Document",
+  "HtmlCanvasElement",
+  "DomTokenList",
+  "Element",
+  "EventTarget",
+  "PointerEvent",
+  "KeyboardEvent",
+  "DomRect",
+  "AudioContext",
+  "AudioDestinationNode",
+  "AudioListener",
+  "AnalyserNode",
+  "OscillatorNode",
+  "OscillatorType",
+  "GainNode",
+  "WaveShaperNode",
+  "AudioNode",
+  "AudioParam",
+  "PannerNode",
+  "PanningModelType",
+  "DistanceModelType",
+  "AudioBuffer",
+  "ConvolverNode",
+  "DelayNode",
+  "BiquadFilterNode",
+  "BiquadFilterType",
+] }
+wgpu = { version = "24.0", features = ["webgpu"] }
+glam = "0.27"
+bytemuck = { version = "1.16", features = ["derive"] }
+instant = "0.1"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+
+
+[profile.release]
+opt-level = "z"
+codegen-units = 1
+lto = true

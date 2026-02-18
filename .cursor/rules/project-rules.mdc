@@ -1,0 +1,41 @@
+---
+alwaysApply: true
+---
+
+## Principles
+
+- Keep changes small and test each step.
+- Refactor for clarity: simple, elegant, maintainable.
+- Improve tests, docs, and diagrams continuously.
+- Remove dead or commented-out code.
+- Use whitespace for readability.
+- Keep functions < 20 lines; files < 200 lines.
+
+## Technology preferences
+
+- Prefer WebGPU via `wgpu` v24.0; avoid WebGL2 fallbacks.
+- Prefer Node for servers/tooling; avoid Python.
+
+## Logging
+
+- Ensure logs are sufficient for `web-test.js` (Puppeteer) to verify behavior.
+
+## Testing
+
+- Rust unit tests live alongside code: run `cargo test`.
+- Headless web test: `npm run ci` (builds WASM, serves, runs Puppeteer `web-test.js`).
+- Full check: `npm run check` runs:
+  - `cargo fmt --check` and `cargo clippy -D warnings`
+  - `cargo test` (workspace, excluding `app-web`)
+  - Web CI build + headless test
+
+## Pre-commit and push
+
+- Update `README.md`, `docs/TODO.md`, and `docs/SPEC.md`.
+- Run `npm run check` and ensure it is green.
+- Fix warnings where possible.
+- Commit and push only after the above succeed.
+
+## Workflow
+
+- Do not block for approvals; follow `docs/SPEC.md` and `docs/TODO.md` and keep momentum.

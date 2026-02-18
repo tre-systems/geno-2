@@ -168,7 +168,7 @@ fn wire_pointermove(w: &InputWiring) {
         }
 
         let mut eng = w.engine.borrow_mut();
-        eng.set_bpm((58.0 + 170.0 * travel_n + 38.0 * motion).clamp(42.0, 260.0));
+        eng.set_bpm((50.0 + 122.0 * travel_n + 24.0 * motion).clamp(38.0, 180.0));
         let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 145.0 + (uvx - 0.5) * 90.0)
             .clamp(-280.0, 280.0);
         eng.set_detune_cents(detune);
@@ -340,7 +340,7 @@ fn wire_pointerup(w: &InputWiring) {
                 let mut eng = w.engine.borrow_mut();
                 eng.params.root_midi = root;
                 eng.params.scale = mode;
-                eng.set_bpm((58.0 + 170.0 * travel_n + 36.0 * motion_n).clamp(42.0, 260.0));
+                eng.set_bpm((50.0 + 122.0 * travel_n + 22.0 * motion_n).clamp(38.0, 180.0));
                 let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 160.0 + (uvx - 0.5) * 90.0)
                     .clamp(-280.0, 280.0);
                 eng.set_detune_cents(detune);
@@ -359,8 +359,8 @@ fn wire_pointerup(w: &InputWiring) {
                 let vi = i % voice_len;
                 let wf = eng.configs[vi].waveform;
                 let freq = midi_to_hz(base_midi + *interval);
-                let vel = (0.44 + 0.32 * motion_n + i as f32 * 0.05).clamp(0.0, 1.0);
-                let dur = 0.18 + 0.09 * (i % 3) as f64 + 0.10 * (1.0 - uvy as f64);
+                let vel = (0.34 + 0.22 * motion_n + i as f32 * 0.03).clamp(0.0, 1.0);
+                let dur = 0.24 + 0.11 * (i % 3) as f64 + 0.16 * (1.0 - uvy as f64);
                 audio::trigger_one_shot(
                     &w.audio_ctx,
                     wf,
@@ -401,8 +401,8 @@ fn wire_pointerup(w: &InputWiring) {
             );
         } else {
             let base_midi = 42.0 + uvx * 34.0 + (0.5 - uvy) * 8.0;
-            let flare_steps: [f32; 5] = [0.0, 7.0, 12.0, 16.0, 21.0];
-            let duration_base = 0.14 + 0.12 * (1.0 - uvy as f64);
+            let flare_steps: [f32; 5] = [0.0, 7.0, 12.0, 19.0, 24.0];
+            let duration_base = 0.20 + 0.24 * (1.0 - uvy as f64);
 
             let eng = w.engine.borrow();
             let voice_len = eng.voices.len();
@@ -410,8 +410,8 @@ fn wire_pointerup(w: &InputWiring) {
                 let vi = i % voice_len;
                 let wf = eng.configs[vi].waveform;
                 let freq = midi_to_hz(base_midi + flare_steps[i]);
-                let vel = (0.40 + 0.38 * (1.0 - uvy) + i as f32 * 0.05).clamp(0.0, 1.0);
-                let dur = duration_base + 0.07 * (i % 3) as f64;
+                let vel = (0.30 + 0.24 * (1.0 - uvy) + i as f32 * 0.04).clamp(0.0, 1.0);
+                let dur = duration_base + 0.12 * (i % 3) as f64;
                 audio::trigger_one_shot(
                     &w.audio_ctx,
                     wf,

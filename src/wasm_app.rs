@@ -51,29 +51,29 @@ async fn build_audio_and_engine(_document: web::Document) -> anyhow::Result<Init
         VoiceConfig {
             waveform: Waveform::Saw,
             base_position: Vec3::new(-1.25, 0.0, 0.42),
-            trigger_probability: 0.66,
+            trigger_probability: 0.58,
             octave_offset: -2,
-            base_duration: 0.58,
+            base_duration: 0.96,
         },
         VoiceConfig {
             waveform: Waveform::Triangle,
             base_position: Vec3::new(1.05, 0.0, -0.88),
-            trigger_probability: 0.74,
+            trigger_probability: 0.64,
             octave_offset: 0,
-            base_duration: 0.24,
+            base_duration: 0.62,
         },
         VoiceConfig {
             waveform: Waveform::Sine,
             base_position: Vec3::new(0.10, 0.0, -0.48),
-            trigger_probability: 0.52,
+            trigger_probability: 0.48,
             octave_offset: 1,
-            base_duration: 0.16,
+            base_duration: 0.42,
         },
     ];
     let engine = Rc::new(RefCell::new(MusicEngine::new(
         voice_configs,
         EngineParams {
-            bpm: 96.0,
+            bpm: 84.0,
             scale: DORIAN,
             root_midi: 62,
             detune_cents: 0.0,
@@ -297,6 +297,10 @@ async fn init() -> anyhow::Result<()> {
                     swirl_vel: [0.0, 0.0],
                     swirl_initialized: false,
                     pulse_energy: [0.0, 0.0, 0.0],
+                    visual_voice_positions: initial_positions.clone(),
+                    visual_swirl_strength: 0.0,
+                    audio_visual_energy: 0.0,
+                    last_audio_ripple_time: 0.0,
                 }));
                 // Start RAF loop
                 frame::start_loop(frame_ctx);

@@ -49,6 +49,10 @@ pub struct FrameContext<'a> {
     pub swirl_vel: [f32; 2],
     pub swirl_initialized: bool,
     pub pulse_energy: [f32; 3],
+    pub visual_voice_positions: Vec<Vec3>,
+    pub visual_swirl_strength: f32,
+    pub audio_visual_energy: f32,
+    pub last_audio_ripple_time: f64,
 }
 
 impl<'a> FrameContext<'a> {
@@ -77,6 +81,16 @@ impl<'a> FrameContext<'a> {
                 smooth_pulses(&mut pulses_ref, &mut self.pulse_energy, dt_sec);
                 pulses_ref.clone()
             }; // drop pulses_ref here
+
+            let note_transient = if note_events.is_empty() {
+                0.0
+            } else {
+                let sum: f32 = note_events.iter().map(|ev| ev.velocity as f32).sum();
+                (sum / note_events.len() as f32).clamp(0.0, 1.0)
+            };
+            let pulse_n = pulses_copy.len().min(3).max(1);
+            let pulse_mean =
+                pulses_copy.iter().take(pulse_n).copied().sum::<f32>() / pulse_n as f32;
 
             // Swirl input and energy (no RefCell borrow active)
             let (uv, mouse_down, gesture_energy, gesture_flash, gesture_spin) = {
@@ -112,6 +126,10 @@ impl<'a> FrameContext<'a> {
                 let eng = self.engine.borrow();
                 eng.voices.iter().map(|v| v.position).collect()
             };
+
+            if self.visual_voice_positions.len() != voice_positions_snapshot.len() {
+                self.visual_voice_positions = voice_positions_snapshot.clone();
+            }
             for i in 0..self.voice_panners.len() {
                 let pos = voice_positions_snapshot[i];
                 self.voice_panners[i].position_x().set_value(pos.x as f32);
@@ -133,6 +151,7 @@ impl<'a> FrameContext<'a> {
                 self.voice_gains[i].gain().set_value(lvl);
             }
 
+            let mut analyser_avg = 0.0_f32;
             let mut ambient_hint =
                 (0.22 * self.swirl_energy + 0.48 * gesture_flash + 0.30 * gesture_energy)
                     .clamp(0.0, 1.0);
@@ -163,7 +182,43 @@ impl<'a> FrameContext<'a> {
                         pulses_ref[i] = (pulses_ref[i] + avg * 0.05).min(1.5);
                     }
                 }
+                analyser_avg = avg;
                 ambient_hint = (avg * 0.74 + 0.26 * ambient_hint).clamp(0.0, 1.0);
+            }
+
+            let audio_visual_target =
+                (0.44 * pulse_mean + 0.34 * note_transient + 0.22 * analyser_avg).clamp(0.0, 1.2);
+            self.audio_visual_energy =
+                smooth_towards(self.audio_visual_energy, audio_visual_target, dt_sec, 0.15);
+
+            ambient_hint =
+                (0.44 * ambient_hint + 0.34 * self.audio_visual_energy + 0.22 * note_transient)
+                    .clamp(0.0, 1.0);
+
+            if note_transient > 0.48
+                && self.audio_visual_energy > 0.35
+                && (audio_time - self.last_audio_ripple_time) > 0.13
+            {
+                let queue_empty = self.queued_ripple_uv.borrow().is_none();
+                if queue_empty {
+                    self.last_audio_ripple_time = audio_time;
+                    *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
+                        uv: self.swirl_pos,
+                        amp: (0.48 + 0.78 * note_transient + 0.36 * self.audio_visual_energy)
+                            .clamp(0.4, 1.5),
+                    });
+                }
+            }
+
+            let voice_step_limit =
+                ((0.70 + 0.95 * self.audio_visual_energy + 0.40 * self.swirl_energy) * dt_sec)
+                    .max(0.010);
+            for i in 0..self.visual_voice_positions.len() {
+                self.visual_voice_positions[i] = slew_towards_vec3(
+                    self.visual_voice_positions[i],
+                    voice_positions_snapshot[i],
+                    voice_step_limit,
+                );
             }
 
             // Voice positions are now only used for audio spatialization and wave displacement
@@ -184,27 +239,34 @@ impl<'a> FrameContext<'a> {
                     .sqrt()
                     / 1.0)
                     .clamp(0.0, 1.0);
-                let strength = (0.18
+                let target_strength = (0.16
                     + 0.62 * self.swirl_energy
                     + 0.26 * speed_norm
                     + 0.60 * gesture_energy
-                    + 0.34 * gesture_flash)
+                    + 0.34 * gesture_flash
+                    + 0.42 * self.audio_visual_energy
+                    + 0.18 * note_transient)
                     .clamp(0.0, 2.4);
-                g.set_swirl(self.swirl_pos, strength, true);
+                let smoothed_strength =
+                    smooth_towards(self.visual_swirl_strength, target_strength, dt_sec, 0.17);
+                self.visual_swirl_strength = slew_towards_scalar(
+                    self.visual_swirl_strength,
+                    smoothed_strength,
+                    (1.05 + 1.25 * self.audio_visual_energy) * dt_sec,
+                )
+                .clamp(0.0, 2.4);
+                g.set_swirl(self.swirl_pos, self.visual_swirl_strength, true);
                 let w = self.canvas.width();
                 let h = self.canvas.height();
                 g.resize_if_needed(w, h);
-                // Get current voice positions and pulse energy for rendering
-                let voice_positions: Vec<Vec3> = {
-                    let engine_ref = self.engine.borrow();
-                    engine_ref.voices.iter().map(|v| v.position).collect()
-                };
                 let pulse_energy_snapshot: Vec<f32> = {
                     let pulses_ref = self.pulses.borrow();
                     pulses_ref.clone()
                 };
 
-                if let Err(e) = g.render(dt_sec, &voice_positions, &pulse_energy_snapshot) {
+                if let Err(e) =
+                    g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot)
+                {
                     log::error!("render error: {:?}", e);
                 }
             }
@@ -305,6 +367,28 @@ fn smooth_pulses(pulses: &mut [f32], pulse_energy: &mut [f32; 3], dt_sec: f32) {
     }
 }
 
+#[inline]
+fn smooth_towards(current: f32, target: f32, dt_sec: f32, tau_sec: f32) -> f32 {
+    let alpha = 1.0 - (-dt_sec / tau_sec.max(1e-4)).exp();
+    current + (target - current) * alpha.clamp(0.0, 1.0)
+}
+
+#[inline]
+fn slew_towards_scalar(current: f32, target: f32, max_delta: f32) -> f32 {
+    current + (target - current).clamp(-max_delta.abs(), max_delta.abs())
+}
+
+#[inline]
+fn slew_towards_vec3(current: Vec3, target: Vec3, max_step: f32) -> Vec3 {
+    let delta = target - current;
+    let len = delta.length();
+    if len <= max_step.max(1e-6) {
+        target
+    } else {
+        current + delta * (max_step / len)
+    }
+}
+
 pub async fn init_gpu(canvas: &web::HtmlCanvasElement) -> Option<render::GpuState<'static>> {
     // leak a canvas clone to satisfy 'static lifetime for surface
     let leaked_canvas = Box::leak(Box::new(canvas.clone()));
@@ -402,28 +486,28 @@ fn apply_global_fx_swirl(
     uv: [f32; 2],
 ) {
     _ = reverb_wet.gain().set_value(
-        (FX_REVERB_BASE + FX_REVERB_SPAN * swirl_energy + 0.18 * gesture_flash).clamp(0.0, 1.2),
+        (FX_REVERB_BASE + FX_REVERB_SPAN * swirl_energy + 0.10 * gesture_flash).clamp(0.0, 1.0),
     );
     let echo = ((uv[0] - uv[1]).abs() * 0.85 + (uv[0] * uv[1]).sqrt() * 0.15).clamp(0.0, 1.0);
     let delay_wet_val = (FX_DELAY_WET_BASE
         + FX_DELAY_WET_SWIRL * swirl_energy
         + FX_DELAY_WET_ECHO * echo
-        + 0.26 * gesture_flash)
+        + 0.12 * gesture_flash)
         .clamp(0.0, 1.0);
     let delay_fb_val = (FX_DELAY_FB_BASE
         + FX_DELAY_FB_SWIRL * swirl_energy
         + FX_DELAY_FB_ECHO * echo
-        + 0.14 * gesture_flash)
+        + 0.06 * gesture_flash)
         .clamp(0.0, 0.95);
     _ = delay_wet.gain().set_value(delay_wet_val);
     _ = delay_feedback.gain().set_value(delay_fb_val);
-    let fizz = (0.55 * swirl_energy + 0.25 * (uv[0] * (1.0 - uv[1])) + 0.35 * gesture_flash)
+    let fizz = (0.62 * swirl_energy + 0.25 * (uv[0] * (1.0 - uv[1])) + 0.18 * gesture_flash)
         .clamp(0.0, 1.0);
     let drive = (FX_SAT_DRIVE_MIN + (FX_SAT_DRIVE_MAX - FX_SAT_DRIVE_MIN) * fizz)
         .clamp(FX_SAT_DRIVE_MIN, FX_SAT_DRIVE_MAX);
     _ = sat_pre.gain().set_value(drive);
     let wet = (FX_SAT_WET_BASE
-        + FX_SAT_WET_SPAN * (0.50 * fizz + 0.35 * swirl_energy + 0.35 * gesture_flash))
+        + FX_SAT_WET_SPAN * (0.55 * fizz + 0.35 * swirl_energy + 0.22 * gesture_flash))
         .clamp(0.0, 1.0);
     _ = sat_wet.gain().set_value(wet);
     _ = sat_dry.gain().set_value(1.0 - wet);

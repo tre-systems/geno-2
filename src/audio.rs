@@ -42,10 +42,10 @@ fn create_gain(
 
 pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
     // Master gain
-    let master_gain = create_gain(audio_ctx, 0.42, "Master")?;
+    let master_gain = create_gain(audio_ctx, 0.46, "Master")?;
 
     // Subtle master saturation (arctan) with wet/dry mix
-    let sat_pre = create_gain(audio_ctx, 0.62, "sat pre")?;
+    let sat_pre = create_gain(audio_ctx, 0.54, "sat pre")?;
     #[allow(deprecated)]
     let saturator = web::WaveShaperNode::new(audio_ctx)
         .map_err(|e| {
@@ -62,8 +62,8 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
     }
     #[allow(deprecated)]
     saturator.set_curve(Some(curve.as_mut_slice()));
-    let sat_wet = create_gain(audio_ctx, 0.18, "sat wet")?;
-    let sat_dry = create_gain(audio_ctx, 0.82, "sat dry")?;
+    let sat_wet = create_gain(audio_ctx, 0.16, "sat wet")?;
+    let sat_dry = create_gain(audio_ctx, 0.84, "sat dry")?;
 
     // Global tone shaping before saturation blend.
     let master_hp = web::BiquadFilterNode::new(audio_ctx)
@@ -72,7 +72,7 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
         })
         .map_err(|_| ())?;
     master_hp.set_type(web::BiquadFilterType::Highpass);
-    master_hp.frequency().set_value(120.0);
+    master_hp.frequency().set_value(95.0);
     master_hp.q().set_value(0.70);
 
     let master_lp = web::BiquadFilterNode::new(audio_ctx)
@@ -81,18 +81,33 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
         })
         .map_err(|_| ())?;
     master_lp.set_type(web::BiquadFilterType::Lowpass);
-    master_lp.frequency().set_value(5200.0);
+    master_lp.frequency().set_value(4600.0);
     master_lp.q().set_value(0.45);
 
-    // Route master -> tone shaping -> [dry,dst] and tone -> pre -> shaper -> wet -> dst
+    // Gentle master compression + makeup keeps baseline louder while taming peaks.
+    let master_comp = web::DynamicsCompressorNode::new(audio_ctx)
+        .map_err(|e| {
+            log::error!("DynamicsCompressorNode error: {:?}", e);
+        })
+        .map_err(|_| ())?;
+    master_comp.threshold().set_value(-22.0);
+    master_comp.knee().set_value(18.0);
+    master_comp.ratio().set_value(2.9);
+    master_comp.attack().set_value(0.003);
+    master_comp.release().set_value(0.30);
+    let comp_makeup = create_gain(audio_ctx, 1.26, "comp makeup")?;
+
+    // Route master -> tone shaping -> [dry,wet] -> comp -> makeup -> destination.
     _ = master_gain.connect_with_audio_node(&master_hp);
     _ = master_hp.connect_with_audio_node(&master_lp);
     _ = master_lp.connect_with_audio_node(&sat_pre);
     _ = sat_pre.connect_with_audio_node(&saturator);
     _ = saturator.connect_with_audio_node(&sat_wet);
-    _ = sat_wet.connect_with_audio_node(&audio_ctx.destination());
+    _ = sat_wet.connect_with_audio_node(&master_comp);
     _ = master_lp.connect_with_audio_node(&sat_dry);
-    _ = sat_dry.connect_with_audio_node(&audio_ctx.destination());
+    _ = sat_dry.connect_with_audio_node(&master_comp);
+    _ = master_comp.connect_with_audio_node(&comp_makeup);
+    _ = comp_makeup.connect_with_audio_node(&audio_ctx.destination());
 
     // Reverb bus (short glass chamber IR)
     let reverb_in = create_gain(audio_ctx, 1.0, "Reverb in")?;
@@ -105,7 +120,7 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
     // Create a short bright impulse response procedurally
     {
         let sr = audio_ctx.sample_rate();
-        let seconds = 1.9_f32;
+        let seconds = 3.8_f32;
         let len = (sr as f32 * seconds) as u32;
         if let Ok(ir) = audio_ctx.create_buffer(2, len, sr) {
             // simple xorshift32 for deterministic noise
@@ -124,9 +139,9 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
                     *s = x;
                     let n = ((x as f32 / std::u32::MAX as f32) * 2.0 - 1.0) as f32;
                     // Faster decay with soft early emphasis
-                    let decay = (-t / 0.72).exp();
-                    let early = (1.0 - (t / 0.22)).clamp(0.0, 1.0);
-                    let v = n * decay * (0.48 + 0.52 * early);
+                    let decay = (-t / 1.60).exp();
+                    let early = (1.0 - (t / 0.36)).clamp(0.0, 1.0);
+                    let v = n * decay * (0.38 + 0.62 * early);
                     buf[i] = v;
                     t += dt;
                 }
@@ -135,7 +150,7 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
             reverb.set_buffer(Some(&ir));
         }
     }
-    let reverb_wet = create_gain(audio_ctx, 0.14, "Reverb wet")?;
+    let reverb_wet = create_gain(audio_ctx, 0.20, "Reverb wet")?;
     _ = reverb_in.connect_with_audio_node(&reverb);
     _ = reverb.connect_with_audio_node(&reverb_wet);
     _ = reverb_wet.connect_with_audio_node(&master_gain);
@@ -148,17 +163,17 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> Result<FxBuses, ()> {
             log::error!("DelayNode error: {:?}", e);
         })
         .map_err(|_| ())?;
-    delay.delay_time().set_value(0.26);
+    delay.delay_time().set_value(0.38);
     let delay_tone = web::BiquadFilterNode::new(audio_ctx)
         .map_err(|e| {
             log::error!("BiquadFilterNode error: {:?}", e);
         })
         .map_err(|_| ())?;
-    delay_tone.set_type(web::BiquadFilterType::Bandpass);
-    delay_tone.frequency().set_value(1320.0);
-    delay_tone.q().set_value(1.15);
-    let delay_feedback = create_gain(audio_ctx, 0.41, "Delay feedback")?;
-    let delay_wet = create_gain(audio_ctx, 0.20, "Delay wet")?;
+    delay_tone.set_type(web::BiquadFilterType::Lowpass);
+    delay_tone.frequency().set_value(2450.0);
+    delay_tone.q().set_value(0.72);
+    let delay_feedback = create_gain(audio_ctx, 0.50, "Delay feedback")?;
+    let delay_wet = create_gain(audio_ctx, 0.26, "Delay wet")?;
     _ = delay_in.connect_with_audio_node(&delay);
     _ = delay.connect_with_audio_node(&delay_tone);
     _ = delay_tone.connect_with_audio_node(&delay_feedback);
@@ -190,58 +205,93 @@ pub fn trigger_one_shot(
     delay_send: &web::GainNode,
     reverb_send: &web::GainNode,
 ) {
-    if let Ok(src) = web::OscillatorNode::new(audio_ctx) {
+    let src_main = match web::OscillatorNode::new(audio_ctx) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let src_chorus = web::OscillatorNode::new(audio_ctx).ok();
+
+    match waveform {
+        Waveform::Sine => src_main.set_type(web::OscillatorType::Sine),
+        Waveform::Saw => src_main.set_type(web::OscillatorType::Sawtooth),
+        Waveform::Triangle => src_main.set_type(web::OscillatorType::Triangle),
+    }
+    if let Some(chorus) = &src_chorus {
         match waveform {
-            Waveform::Sine => src.set_type(web::OscillatorType::Sine),
-            // Waveform::Square => src.set_type(web::OscillatorType::Square),
-            Waveform::Saw => src.set_type(web::OscillatorType::Sawtooth),
-            Waveform::Triangle => src.set_type(web::OscillatorType::Triangle),
+            Waveform::Sine => chorus.set_type(web::OscillatorType::Sine),
+            Waveform::Saw => chorus.set_type(web::OscillatorType::Sawtooth),
+            Waveform::Triangle => chorus.set_type(web::OscillatorType::Triangle),
         }
-        if let Ok(g) = web::GainNode::new(audio_ctx) {
-            g.gain().set_value(0.0);
-            let now = audio_ctx.current_time();
-            let t0 = now + 0.005;
-            match waveform {
-                Waveform::Saw => {
-                    _ = src.frequency().set_value_at_time(frequency_hz * 1.08, t0);
-                    _ = src
-                        .frequency()
-                        .linear_ramp_to_value_at_time(frequency_hz, t0 + 0.09);
-                }
-                Waveform::Triangle => {
-                    _ = src.frequency().set_value_at_time(frequency_hz * 0.96, t0);
-                    _ = src
-                        .frequency()
-                        .linear_ramp_to_value_at_time(frequency_hz, t0 + 0.12);
-                }
-                Waveform::Sine => {
-                    _ = src.frequency().set_value_at_time(frequency_hz, t0);
-                }
-            }
-            let attack = match waveform {
-                Waveform::Saw => 0.006,
-                Waveform::Triangle => 0.012,
-                Waveform::Sine => 0.018,
-            };
-            let sustain_k = match waveform {
-                Waveform::Saw => 0.38,
-                Waveform::Triangle => 0.46,
-                Waveform::Sine => 0.58,
-            };
-            let sustain_t = (t0 + duration_sec * 0.45).min(t0 + duration_sec - 0.01);
-            _ = g.gain().linear_ramp_to_value_at_time(velocity, t0 + attack);
-            _ = g
-                .gain()
-                .linear_ramp_to_value_at_time(velocity * sustain_k, sustain_t);
-            _ = g
-                .gain()
-                .linear_ramp_to_value_at_time(0.0, t0 + duration_sec);
-            _ = src.connect_with_audio_node(&g);
-            _ = g.connect_with_audio_node(voice_gain);
-            _ = g.connect_with_audio_node(delay_send);
-            _ = g.connect_with_audio_node(reverb_send);
-            _ = src.start_with_when(t0);
-            _ = src.stop_with_when(t0 + duration_sec + 0.05);
+    }
+
+    if let Ok(g) = web::GainNode::new(audio_ctx) {
+        g.gain().set_value(0.0);
+        let now = audio_ctx.current_time();
+        let t0 = now + 0.005;
+        let (glide_mul, glide_time, chorus_detune) = match waveform {
+            Waveform::Saw => (1.05, 0.14, 9.0),
+            Waveform::Triangle => (0.97, 0.18, -7.0),
+            Waveform::Sine => (1.00, 0.20, 4.0),
+        };
+        _ = src_main
+            .frequency()
+            .set_value_at_time(frequency_hz * glide_mul, t0);
+        _ = src_main
+            .frequency()
+            .linear_ramp_to_value_at_time(frequency_hz, t0 + glide_time);
+
+        if let Some(chorus) = &src_chorus {
+            chorus.detune().set_value(chorus_detune);
+            _ = chorus
+                .frequency()
+                .set_value_at_time(frequency_hz * (2.0 - glide_mul), t0);
+            _ = chorus
+                .frequency()
+                .linear_ramp_to_value_at_time(frequency_hz, t0 + glide_time * 1.1);
+        }
+
+        let attack = match waveform {
+            Waveform::Saw => 0.016,
+            Waveform::Triangle => 0.026,
+            Waveform::Sine => 0.038,
+        };
+        let sustain_k = match waveform {
+            Waveform::Saw => 0.56,
+            Waveform::Triangle => 0.64,
+            Waveform::Sine => 0.74,
+        };
+        let release_tail = match waveform {
+            Waveform::Saw => 0.62,
+            Waveform::Triangle => 0.78,
+            Waveform::Sine => 0.96,
+        };
+        let sustain_t = (t0 + duration_sec * 0.68).min(t0 + duration_sec - 0.03);
+        let end_t = t0 + duration_sec + release_tail;
+
+        _ = g.gain().set_value_at_time(0.0001, t0);
+        _ = g
+            .gain()
+            .linear_ramp_to_value_at_time(velocity * 0.90, t0 + attack);
+        _ = g
+            .gain()
+            .linear_ramp_to_value_at_time(velocity * sustain_k, sustain_t);
+        _ = g.gain().exponential_ramp_to_value_at_time(0.0008, end_t);
+
+        _ = src_main.connect_with_audio_node(&g);
+        if let Some(chorus) = &src_chorus {
+            _ = chorus.connect_with_audio_node(&g);
+        }
+        _ = g.connect_with_audio_node(voice_gain);
+        _ = g.connect_with_audio_node(delay_send);
+        _ = g.connect_with_audio_node(reverb_send);
+
+        _ = src_main.start_with_when(t0);
+        if let Some(chorus) = &src_chorus {
+            _ = chorus.start_with_when(t0 + 0.0015);
+        }
+        _ = src_main.stop_with_when(end_t + 0.06);
+        if let Some(chorus) = &src_chorus {
+            _ = chorus.stop_with_when(end_t + 0.06);
         }
     }
 }

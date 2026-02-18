@@ -27,20 +27,20 @@ pub const SWIRL_ENERGY_BLEND_ALPHA: f32 = 0.18; // new = (1-α)*old + α*target
 
 // Global FX mapping weights
 pub const FX_REVERB_BASE: f32 = 0.16;
-pub const FX_REVERB_SPAN: f32 = 0.44;
+pub const FX_REVERB_SPAN: f32 = 0.50;
 
-pub const FX_DELAY_WET_BASE: f32 = 0.08;
-pub const FX_DELAY_WET_SWIRL: f32 = 0.40;
+pub const FX_DELAY_WET_BASE: f32 = 0.14;
+pub const FX_DELAY_WET_SWIRL: f32 = 0.30;
 pub const FX_DELAY_WET_ECHO: f32 = 0.26;
 
-pub const FX_DELAY_FB_BASE: f32 = 0.28;
-pub const FX_DELAY_FB_SWIRL: f32 = 0.32;
+pub const FX_DELAY_FB_BASE: f32 = 0.34;
+pub const FX_DELAY_FB_SWIRL: f32 = 0.20;
 pub const FX_DELAY_FB_ECHO: f32 = 0.19;
 
-pub const FX_SAT_DRIVE_MIN: f32 = 0.24;
-pub const FX_SAT_DRIVE_MAX: f32 = 2.10;
-pub const FX_SAT_WET_BASE: f32 = 0.10;
-pub const FX_SAT_WET_SPAN: f32 = 0.64;
+pub const FX_SAT_DRIVE_MIN: f32 = 0.18;
+pub const FX_SAT_DRIVE_MAX: f32 = 1.55;
+pub const FX_SAT_WET_BASE: f32 = 0.14;
+pub const FX_SAT_WET_SPAN: f32 = 0.42;
 
 // Visual build parameters
 
@@ -50,13 +50,13 @@ pub const D_SEND_BASE: f32 = 0.08;
 pub const D_SEND_SPAN: f32 = 0.56;
 pub const R_SEND_BASE: f32 = 0.16;
 pub const R_SEND_SPAN: f32 = 0.52;
-pub const SEND_BOOST_COEFF: f32 = 0.52;
+pub const SEND_BOOST_COEFF: f32 = 0.30;
 pub const D_SEND_CLAMP_MAX: f32 = 1.2;
 pub const R_SEND_CLAMP_MAX: f32 = 1.5;
 
 // Voice level mapping
-pub const LEVEL_BASE: f32 = 0.58;
-pub const LEVEL_SPAN: f32 = 0.46;
+pub const LEVEL_BASE: f32 = 0.70;
+pub const LEVEL_SPAN: f32 = 0.28;
 
 // Color adjustments
 

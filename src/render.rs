@@ -7,8 +7,6 @@ mod targets;
 mod waves;
 use targets::RenderTargets;
 
-pub use crate::camera::screen_to_world_ray;
-
 use waves::{create_waves_resources, VoicePacked, WavesResources, WavesUniforms};
 
 #[repr(C)]
@@ -293,9 +291,9 @@ impl<'a> GpuState<'a> {
             width,
             height,
             clear_color: wgpu::Color {
-                r: 0.020,
+                r: 0.014,
                 g: 0.018,
-                b: 0.028,
+                b: 0.023,
                 a: 1.0,
             },
             cam_eye: Vec3::new(0.0, 0.0, camera_z),
@@ -311,13 +309,13 @@ impl<'a> GpuState<'a> {
         })
     }
     pub fn set_ambient_clear(&mut self, energy01: f32) {
-        // Warm dusk base clear that lifts toward pastel moonlight as ambient energy grows.
+        // Dark slate base that lifts toward teal/amber haze as ambient energy grows.
         let e = energy01.clamp(0.0, 1.0);
-        let lift = 0.14 * e;
+        let lift = 0.16 * e;
         self.clear_color = wgpu::Color {
-            r: (0.020 + lift * 0.72) as f64,
-            g: (0.018 + lift * 0.66) as f64,
-            b: (0.028 + lift * 0.78) as f64,
+            r: (0.014 + lift * 0.66) as f64,
+            g: (0.018 + lift * 0.72) as f64,
+            b: (0.023 + lift * 0.58) as f64,
             a: 1.0,
         };
         self.ambient_energy = e;

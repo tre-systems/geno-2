@@ -1,4 +1,4 @@
-// Geno-2 post pass: bloom blend, cinematic grade, dust, and soft vignette.
+// Geno-2 post pass: punchy print-like grade with subtle scan and grain.
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -58,41 +58,11 @@ fn hash21(p: vec2<f32>) -> f32 {
     return fract(sin(h) * 43758.5453123);
 }
 
-fn noise(p: vec2<f32>) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let a = hash21(i);
-    let b = hash21(i + vec2<f32>(1.0, 0.0));
-    let c = hash21(i + vec2<f32>(0.0, 1.0));
-    let d = hash21(i + vec2<f32>(1.0, 1.0));
-    let u2 = f * f * (3.0 - 2.0 * f);
-    return mix(mix(a, b, u2.x), mix(c, d, u2.x), u2.y);
-}
-
-fn fbm(p: vec2<f32>) -> f32 {
-    var a = 0.0;
-    var b = 0.5;
-    var f = p;
-    for (var i = 0; i < 5; i = i + 1) {
-        a += b * (noise(f) * 2.0 - 1.0);
-        f = f * 2.12 + vec2<f32>(0.16, -0.11);
-        b *= 0.52;
-    }
-    return a;
-}
-
-fn vignette_mask(uv: vec2<f32>) -> f32 {
-    let p = (uv - 0.5) * vec2<f32>(1.10, 1.0);
-    let r = length(p);
-    return 1.0 - smoothstep(0.34, 0.95, r);
-}
-
 @fragment
 fn fs_bright(inp: VsOut) -> @location(0) vec4<f32> {
     let col = textureSample(hdr_tex, hdr_sampler, inp.uv).rgb;
-    let thr = u_post.threshold;
     let l = luminance(col);
-    let k = max(l - thr, 0.0);
+    let k = max(l - u_post.threshold, 0.0);
     let outc = col * (k / max(l, 1e-5));
     return vec4<f32>(outc, 1.0);
 }
@@ -122,51 +92,45 @@ fn fs_blur(inp: VsOut) -> @location(0) vec4<f32> {
 fn fs_composite(inp: VsOut) -> @location(0) vec4<f32> {
     let center = inp.uv - 0.5;
     let radius = length(center);
+    let dir = normalize(center + vec2<f32>(1e-5, 0.0));
 
-    // Mild lens breathing toward frame edges.
-    let dist = 1.0 + 0.035 * radius * radius;
-    let sample_uv = center * dist + 0.5;
-    var base = textureSample(hdr_tex, hdr_sampler, sample_uv).rgb;
+    // Small chroma split at frame edges.
+    let ca = (0.001 + 0.002 * radius) * (0.8 + 0.6 * u_post.ambient);
+    let r = textureSample(hdr_tex, hdr_sampler, inp.uv + dir * ca).r;
+    let g = textureSample(hdr_tex, hdr_sampler, inp.uv).g;
+    let b = textureSample(hdr_tex, hdr_sampler, inp.uv - dir * ca).b;
+    var base = vec3<f32>(r, g, b);
 
-    let bloom = textureSample(blur_tex, blur_sampler, sample_uv).rgb * u_post.bloom_strength;
+    let bloom = textureSample(blur_tex, blur_sampler, inp.uv).rgb * u_post.bloom_strength;
     base += bloom;
 
-    let t = u_post.time;
-    let drift = vec3<f32>(
-        1.0 + 0.04 * sin(0.13 * t + 0.9),
-        1.0 + 0.03 * sin(0.17 * t + 2.1),
-        1.0 + 0.05 * sin(0.11 * t + 4.2)
-    );
-    base *= mix(vec3<f32>(1.0), drift, 0.10 + 0.22 * u_post.ambient);
-
-    // Exposure before tonemap.
-    base *= 0.92;
+    // Slight exposure and tonemap.
+    base *= 0.96;
     var mapped = aces_tonemap(base);
 
-    // Soft contrast and slight cyan-to-amber split tone.
-    mapped = clamp((mapped - vec3<f32>(0.5)) * 1.10 + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
-    mapped = pow(mapped, vec3<f32>(1.02, 1.00, 0.98));
+    // Print-like contrast and channel bend.
+    mapped = clamp((mapped - vec3<f32>(0.5)) * 1.22 + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+    mapped = pow(mapped, vec3<f32>(0.95, 1.02, 1.07));
+
+    // Soft posterization gives a distinctive non-photoreal finish.
+    let levels = 20.0;
+    mapped = floor(mapped * levels) / levels;
 
     let luma = luminance(mapped);
-    let cool = vec3<f32>(0.92, 1.00, 1.08);
-    let warm = vec3<f32>(1.08, 0.98, 0.90);
-    let grade = mix(cool, warm, smoothstep(0.26, 0.86, luma));
+    let cool = vec3<f32>(0.88, 1.03, 1.10);
+    let warm = vec3<f32>(1.10, 0.97, 0.86);
+    let grade = mix(cool, warm, smoothstep(0.24, 0.86, luma));
     mapped *= grade;
 
-    let smoke_a = 0.5 + 0.5 * fbm(inp.uv * 2.8 + vec2<f32>(0.04 * t, -0.03 * t));
-    let smoke_b = 0.5 + 0.5 * fbm((inp.uv.yx + vec2<f32>(0.12, -0.08)) * 3.1 + vec2<f32>(-0.02 * t, 0.05 * t));
-    let smoke = clamp(0.52 * smoke_a + 0.48 * smoke_b, 0.0, 1.0);
-    let smoke_k = 0.12 * smoke * smoothstep(0.18, 0.96, radius * 1.4);
-    mapped = mapped * (1.0 - smoke_k) + vec3<f32>(0.08, 0.10, 0.14) * (smoke_k * 0.55);
+    let vignette = 1.0 - smoothstep(0.24, 0.94, radius * 1.18);
+    mapped *= mix(0.54, 1.02, vignette);
 
-    let vig = vignette_mask(inp.uv);
-    mapped *= mix(0.62, 1.0, vig);
+    let t = u_post.time;
+    let scan = sin((inp.uv.y * u_post.resolution.y + 20.0 * t) * 0.58);
+    mapped *= 1.0 + 0.010 * scan;
 
-    let grain = noise(inp.uv * u_post.resolution + vec2<f32>(23.0 * t, -17.0 * t));
-    mapped += (grain - 0.5) * 0.014;
-
-    let shimmer = sin((inp.uv.y * u_post.resolution.y + 12.0 * t) * 0.45);
-    mapped *= 1.0 + 0.006 * shimmer;
+    let grain = hash21(inp.uv * u_post.resolution + vec2<f32>(37.0 * t, -29.0 * t));
+    mapped += (grain - 0.5) * 0.016;
 
     return vec4<f32>(clamp(mapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }

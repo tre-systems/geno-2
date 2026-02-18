@@ -91,10 +91,11 @@
           var(--panel-bg);
         padding: 18px 20px;
         border: 1px solid var(--panel-border);
-        border-radius: 14px;
+        border-radius: 6px;
         box-shadow:
-          0 24px 48px rgba(0, 0, 0, 0.46),
-          inset 0 1px 0 rgba(255, 248, 236, 0.08);
+          0 30px 52px rgba(0, 0, 0, 0.52),
+          inset 0 1px 0 rgba(255, 248, 236, 0.08),
+          inset 0 0 0 1px rgba(255, 210, 170, 0.16);
         text-align: left;
         overflow: hidden;
       }
@@ -111,20 +112,21 @@
       }
       #start-keys h3 {
         margin: 0 0 8px 0;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 760;
         color: #f1cfab;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
       #start-title {
         font:
-          800 20px/1.2 "Avenir Next",
-          "Gill Sans Nova",
-          "Trebuchet MS",
+          800 20px/1.2 "Palatino Linotype",
+          "Book Antiqua",
+          "Georgia",
           sans-serif;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.10em;
         color: #f6e8d6;
+        text-transform: uppercase;
       }
       #start-keys .grid {
         display: grid;
@@ -189,7 +191,7 @@
       .kbd {
         display: inline-block;
         padding: 1px 7px;
-        border-radius: 6px;
+        border-radius: 3px;
         border: 1px solid rgba(239, 185, 132, 0.44);
         background:
           linear-gradient(180deg, rgba(55, 39, 58, 0.88), rgba(33, 25, 40, 0.86));
@@ -211,7 +213,7 @@
           "Trebuchet MS",
           sans-serif;
         padding: 8px 14px;
-        border-radius: 8px;
+        border-radius: 4px;
         cursor: pointer;
         box-shadow:
           0 8px 18px rgba(0, 0, 0, 0.34),
@@ -255,7 +257,7 @@
         }
         #start-keys {
           padding: 14px;
-          border-radius: 12px;
+          border-radius: 6px;
         }
         #start-keys .grid {
           grid-template-columns: 1fr;
@@ -293,16 +295,16 @@
               margin-bottom: 6px;
             "
           >
-            <div id="start-title">Geno-2</div>
+            <div id="start-title">Geno-2 // Lattice</div>
             <div>
               <button id="overlay-close" aria-label="Close">×</button>
             </div>
           </div>
           <p class="intro">
-            Drift your cursor through the field and sculpt an entirely new pulse language.
+            A geometric pulse instrument built for sharp rhythmic textures and faceted light.
           </p>
           <p class="intro-note">
-            Starts in D Dorian. Press <span class="kbd">H</span> anytime to toggle this panel.
+            Starts in D Dorian. Press <span class="kbd">H</span> to hide or reopen this panel.
           </p>
           <div class="grid">
             <div>
@@ -338,6 +340,18 @@
                 <li class="help-row">
                   <span class="help-bindings"><span class="kbd">Space</span></span>
                   <span class="help-desc">Pause or resume playback</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-bindings"><span class="kbd">Click</span></span>
+                  <span class="help-desc">Trigger a burst chord at cursor position</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-bindings"><span class="kbd">Drag</span></span>
+                  <span class="help-desc">Sweep tempo, detune, and rotating voice geometry</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-bindings"><span class="kbd">Release</span></span>
+                  <span class="help-desc">Commit gesture into new root + mode + phrase seed</span>
                 </li>
                 <li class="help-row">
                   <span class="help-bindings">

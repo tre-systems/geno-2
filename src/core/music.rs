@@ -234,6 +234,8 @@ impl MusicEngine {
     fn schedule_step(&mut self, out_events: &mut Vec<NoteEvent>) {
         let step = self.step_counter;
         self.step_counter = self.step_counter.wrapping_add(1);
+        let phrase_idx = ((step / 6) as usize) % PHRASE_ROOT_SHIFTS.len();
+        let phrase_shift = PHRASE_ROOT_SHIFTS[phrase_idx];
 
         for (i, voice) in self.voices.iter().enumerate() {
             if voice.muted {
@@ -241,67 +243,115 @@ impl MusicEngine {
             }
 
             let rng = &mut self.rngs[i];
-            let pulse = rhythmic_gate(step, i);
-            let accent = accent_gate(step, i);
-            let travel = 0.5 + 0.5 * (step as f32 * (0.28 + i as f32 * 0.07)).sin();
-            let prob = (self.configs[i].trigger_probability * (0.28 + 0.52 * pulse)
-                + 0.14 * accent
-                + 0.18 * travel)
-                .clamp(0.03, 0.98);
-
-            if rng.gen::<f32>() >= prob {
-                continue;
-            }
-
             let scale = self.params.scale;
             if scale.is_empty() {
                 continue;
             }
             let scale_len = scale.len();
             let single_tone_scale = scale_len == 1;
-            let stride = 2 * i + 1;
-            let base_idx = ((step as usize) * stride) % scale_len;
-            let walk = if rng.gen::<f32>() < 0.68 {
-                0
-            } else {
-                rng.gen_range(0..scale_len)
-            };
-            let degree = scale[(base_idx + walk) % scale_len];
 
+            let gate = if single_tone_scale {
+                1.0
+            } else {
+                let (steps, hits, rotate) = polymeter_for_voice(i);
+                let hard_gate = euclidean_gate(step, steps, hits, rotate);
+                let swing = 0.5 + 0.5 * (step as f32 * (0.09 + i as f32 * 0.03)).sin();
+                let travel = 0.5
+                    + 0.5
+                        * (step as f32 * (0.07 + i as f32 * 0.04)
+                            + voice.position.x * 1.3
+                            + voice.position.z * 0.9)
+                            .cos();
+                (0.62 * hard_gate + 0.24 * swing + 0.14 * travel).clamp(0.0, 1.0)
+            };
+            let accent = if single_tone_scale {
+                0.0
+            } else {
+                accent_gate(step, i)
+            };
+            let prob = if single_tone_scale {
+                self.configs[i].trigger_probability.clamp(0.0, 1.0)
+            } else {
+                (self.configs[i].trigger_probability * (0.16 + 0.76 * gate)
+                    + 0.10 * accent
+                    + 0.08 * (phrase_idx as f32 / PHRASE_ROOT_SHIFTS.len() as f32))
+                    .clamp(0.02, 0.98)
+            };
+            if rng.gen::<f32>() >= prob {
+                continue;
+            }
+
+            let degree = if single_tone_scale {
+                scale[0]
+            } else {
+                let motif = motif_for_voice(i, step);
+                let stride = (i as i32 * 2) + 1;
+                let phase = (step as i32 * stride) + motif + phrase_idx as i32;
+                let mut scale_pos = phase % scale_len as i32;
+                if scale_pos < 0 {
+                    scale_pos += scale_len as i32;
+                }
+                let mut deg = scale[scale_pos as usize];
+                if accent > 0.84 && rng.gen::<f32>() < 0.24 {
+                    deg += 12.0;
+                }
+                deg
+            };
+
+            let root_shift = if single_tone_scale { 0.0 } else { phrase_shift };
             let contour = if single_tone_scale {
                 0.0
             } else {
-                0.72 * (step as f32 * (0.19 + i as f32 * 0.09)).sin()
+                0.42 * (step as f32 * (0.14 + i as f32 * 0.04)).sin()
             };
-            let leap = if single_tone_scale {
+            let register = if single_tone_scale {
                 0.0
-            } else if accent > 0.8 && rng.gen::<f32>() < 0.32 {
-                12.0
-            } else if pulse < 0.2 && rng.gen::<f32>() < 0.24 {
-                -12.0
             } else {
-                0.0
+                match i {
+                    0 => {
+                        if gate > 0.78 {
+                            -12.0
+                        } else {
+                            -24.0
+                        }
+                    }
+                    1 => 0.0,
+                    _ => {
+                        if gate > 0.72 {
+                            12.0
+                        } else {
+                            24.0
+                        }
+                    }
+                }
             };
 
             let octave = self.configs[i].octave_offset;
             let micro_drift = if single_tone_scale {
                 0.0
             } else {
-                (rng.gen::<f32>() - 0.5) * 0.20
+                (rng.gen::<f32>() - 0.5) * 0.14
             };
             let midi = self.params.root_midi as f32
+                + root_shift
                 + degree
                 + contour
-                + leap
+                + register
                 + (octave * 12) as f32
                 + micro_drift;
             let freq = midi_to_hz_with_detune(midi, self.params.detune_cents);
 
-            let vel =
-                (0.24 + 0.34 * pulse + 0.26 * accent + rng.gen::<f32>() * 0.24).clamp(0.0, 1.0);
-            let span = 0.62 + 0.62 * (1.0 - pulse);
-            let jitter = 0.82 + rng.gen::<f32>() * 0.52;
-            let dur = (self.configs[i].base_duration * span * jitter).max(0.06);
+            let (vel_base, vel_span, dur_scale, staccato) = match i {
+                0 => (0.48, 0.34, 1.45, 0.28),
+                1 => (0.30, 0.40, 0.88, 0.48),
+                _ => (0.24, 0.52, 0.54, 0.70),
+            };
+            let vel = (vel_base
+                + vel_span * (0.58 * gate + 0.22 * accent + 0.20 * rng.gen::<f32>()))
+            .clamp(0.0, 1.0);
+            let sustain = (1.0 - staccato * gate).clamp(0.18, 1.35);
+            let jitter = 0.72 + 0.48 * rng.gen::<f32>();
+            let dur = (self.configs[i].base_duration * dur_scale * sustain * jitter).max(0.04);
             out_events.push(NoteEvent {
                 voice_index: i,
                 frequency_hz: freq,
@@ -312,19 +362,41 @@ impl MusicEngine {
     }
 }
 
-fn rhythmic_gate(step: u64, voice_index: usize) -> f32 {
-    const PAT_A: [f32; 12] = [
-        1.00, 0.20, 0.58, 0.12, 0.84, 0.26, 0.62, 0.18, 0.92, 0.24, 0.50, 0.16,
-    ];
-    const PAT_B: [f32; 10] = [0.66, 0.08, 0.90, 0.24, 0.44, 0.72, 0.10, 0.52, 0.18, 0.80];
-    const PAT_C: [f32; 14] = [
-        0.42, 0.78, 0.16, 0.64, 0.12, 0.90, 0.20, 0.56, 0.14, 0.70, 0.26, 0.48, 0.10, 0.84,
-    ];
+const PHRASE_ROOT_SHIFTS: [f32; 16] = [
+    0.0, 0.0, 5.0, 5.0, 3.0, 3.0, 7.0, 7.0, 2.0, 2.0, 8.0, 8.0, 10.0, 10.0, 5.0, 5.0,
+];
+
+fn euclidean_gate(step: u64, steps: u32, hits: u32, rotate: u32) -> f32 {
+    if steps == 0 || hits == 0 {
+        return 0.0;
+    }
+    let p = ((step as u32) + rotate) % steps;
+    let a = (p * hits) / steps;
+    let b = (((p + 1) % steps) * hits) / steps;
+    if a != b {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+fn polymeter_for_voice(voice_index: usize) -> (u32, u32, u32) {
+    match voice_index % 3 {
+        0 => (13, 5, 0),
+        1 => (11, 7, 2),
+        _ => (17, 4, 5),
+    }
+}
+
+fn motif_for_voice(voice_index: usize, step: u64) -> i32 {
+    const M0: [i32; 12] = [0, 2, -1, 4, 0, 3, -2, 5, 1, -1, 3, 0];
+    const M1: [i32; 9] = [0, 1, 3, 2, -1, 4, 1, 2, 0];
+    const M2: [i32; 10] = [0, 4, 2, 5, 1, 6, 3, 5, 2, 4];
 
     match voice_index % 3 {
-        0 => PAT_A[step as usize % PAT_A.len()],
-        1 => PAT_B[step as usize % PAT_B.len()],
-        _ => PAT_C[step as usize % PAT_C.len()],
+        0 => M0[step as usize % M0.len()],
+        1 => M1[step as usize % M1.len()],
+        _ => M2[step as usize % M2.len()],
     }
 }
 

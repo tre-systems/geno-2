@@ -8,8 +8,8 @@ use glam::Vec3;
 pub const PULSE_ENERGY_DECAY_PER_SEC: f32 = 1.28;
 
 // Target smoothing time constants (seconds)
-pub const PULSE_RISE_TAU_SEC: f32 = 0.065;
-pub const PULSE_FALL_TAU_SEC: f32 = 0.62;
+pub const PULSE_RISE_TAU_SEC: f32 = 0.052;
+pub const PULSE_FALL_TAU_SEC: f32 = 0.48;
 
 // Pointer speed clamp (normalized units per second)
 pub const POINTER_SPEED_MAX: f32 = 10.0;
@@ -55,8 +55,8 @@ pub const D_SEND_CLAMP_MAX: f32 = 1.2;
 pub const R_SEND_CLAMP_MAX: f32 = 1.5;
 
 // Voice level mapping
-pub const LEVEL_BASE: f32 = 0.48;
-pub const LEVEL_SPAN: f32 = 0.34;
+pub const LEVEL_BASE: f32 = 0.58;
+pub const LEVEL_SPAN: f32 = 0.46;
 
 // Color adjustments
 
@@ -71,5 +71,5 @@ pub const Z_OFFSET: Vec3 = glam::Vec3::new(0.0, 0.0, -1.5);
 pub const ENGINE_DRAG_MAX_RADIUS: f32 = 1.0;
 
 // Post-processing defaults
-pub const BLOOM_STRENGTH: f32 = 0.82;
-pub const BLOOM_THRESHOLD: f32 = 0.62;
+pub const BLOOM_STRENGTH: f32 = 0.68;
+pub const BLOOM_THRESHOLD: f32 = 0.68;

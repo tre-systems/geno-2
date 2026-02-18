@@ -95,6 +95,10 @@ async function gotoWithRetry(
   if (overlayShown !== "visible")
     throw new Error("start overlay did not show after H");
 
+  // Close again so canvas pointer handlers receive the interaction tests
+  await page.click("#overlay-ok");
+  await new Promise((r) => setTimeout(r, 150));
+
   // Engine-dependent checks (only if engine handlers are bound)
   const engineStarted = logs.some((l) => l.includes("[engine] voices="));
 
@@ -139,21 +143,32 @@ async function gotoWithRetry(
       throw new Error("missing master mute= false log");
     // Muted state no longer shown in hint; rely on logs only
 
-    // Click center to toggle mute on the hovered voice (expects a hit)
+    // Click center to trigger a gesture burst
     await page.mouse.move(box.x, box.y);
     await page.mouse.click(box.x, box.y);
     await new Promise((r) => setTimeout(r, 120));
-    if (!logs.some((l) => /\[click\] toggle mute voice \d+/.test(l)))
-      throw new Error("missing toggle mute click log");
+    if (!logs.some((l) => /\[gesture\] burst uv=\([0-9.]+,[0-9.]+\)/.test(l)))
+      throw new Error("missing gesture burst log");
 
-    // Alt+Click to solo the same voice
-    await page.keyboard.down("Alt");
-    await page.mouse.click(box.x, box.y);
-    await page.keyboard.up("Alt");
+    // Drag sweep should start and apply a new phrase/root+mode on release
+    await page.mouse.move(box.x - 90, box.y + 70);
+    await page.mouse.down();
+    await new Promise((r) => setTimeout(r, 50));
+    await page.mouse.move(box.x + 130, box.y - 120, { steps: 16 });
+    await new Promise((r) => setTimeout(r, 50));
+    await page.mouse.up();
     await new Promise((r) => setTimeout(r, 120));
 
-    if (!logs.some((l) => /\[click\] solo voice \d+/.test(l)))
-      throw new Error("missing solo click log");
+    if (!logs.some((l) => l.includes("[gesture] begin sweep")))
+      throw new Error("missing gesture begin sweep log");
+    if (
+      !logs.some((l) =>
+        /\[gesture\] sweep apply root=\d+ mode=.* bpm=[0-9.]+ detune=-?[0-9]+/.test(
+          l
+        )
+      )
+    )
+      throw new Error("missing gesture sweep apply log");
 
     // Test G key support (new functionality)
     await page.keyboard.press("KeyG");

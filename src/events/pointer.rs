@@ -561,8 +561,8 @@ fn wire_pointerup(w: &InputWiring) {
                 let kind = mt.gesture_kind;
                 let initial_centroid = mt.initial_centroid;
 
-                // Snapshot centroid before reset (use last known position for 3-finger)
-                let final_pos = [pos.x, pos.y];
+                // Snapshot centroid before reset (prefer stored centroid over last pointer position)
+                let final_pos = mt.current_centroid.unwrap_or([pos.x, pos.y]);
 
                 mt.reset_gesture();
                 drop(mt);

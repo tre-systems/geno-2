@@ -84,11 +84,12 @@ fn wire_pointermove(w: &InputWiring) {
             return;
         }
 
-        // Always update pointer map for tracked pointers
+        // Always update pointer map and running centroid for tracked pointers
         {
             let mut mt = w.multi_touch.borrow_mut();
             if mt.pointers.contains_key(&pid) {
                 mt.pointers.insert(pid, [pos.x, pos.y]);
+                mt.current_centroid = mt.centroid_px();
             }
         }
 

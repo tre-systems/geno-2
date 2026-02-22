@@ -258,6 +258,7 @@ fn reset_gesture_clears_state_but_keeps_pointers() {
     mt.initial_detune = 50.0;
     mt.initial_centroid = [200.0, 300.0];
     mt.gesture_committed = true;
+    mt.current_centroid = Some([200.0, 300.0]);
 
     mt.reset_gesture();
 
@@ -272,7 +273,61 @@ fn reset_gesture_clears_state_but_keeps_pointers() {
     assert_eq!(mt.initial_bpm, 0.0);
     assert_eq!(mt.initial_detune, 0.0);
     assert_eq!(mt.initial_centroid, [0.0, 0.0]);
+    assert!(mt.current_centroid.is_none());
     assert!(!mt.gesture_committed);
+}
+
+// ────────────────── current_centroid ──────────────────
+
+#[test]
+fn current_centroid_default_is_none() {
+    let mt = MultiTouchState::default();
+    assert!(mt.current_centroid.is_none());
+}
+
+#[test]
+fn current_centroid_tracks_pointer_movement() {
+    let mut mt = MultiTouchState::default();
+    mt.pointers.insert(1, [100.0, 200.0]);
+    mt.pointers.insert(2, [300.0, 200.0]);
+    mt.pointers.insert(3, [200.0, 400.0]);
+    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+
+    // Simulate pointermove updating current_centroid
+    mt.current_centroid = mt.centroid_px();
+    let c = mt.current_centroid.unwrap();
+    assert!((c[0] - 200.0).abs() < 0.01);
+    assert!((c[1] - 266.67).abs() < 0.5);
+
+    // Move all pointers right by 100px
+    mt.pointers.insert(1, [200.0, 200.0]);
+    mt.pointers.insert(2, [400.0, 200.0]);
+    mt.pointers.insert(3, [300.0, 400.0]);
+    mt.current_centroid = mt.centroid_px();
+    let c = mt.current_centroid.unwrap();
+    assert!((c[0] - 300.0).abs() < 0.01);
+    assert!((c[1] - 266.67).abs() < 0.5);
+}
+
+#[test]
+fn current_centroid_preferred_over_fallback() {
+    let mut mt = MultiTouchState::default();
+    mt.pointers.insert(1, [100.0, 200.0]);
+    mt.pointers.insert(2, [300.0, 200.0]);
+    mt.pointers.insert(3, [200.0, 400.0]);
+    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.current_centroid = mt.centroid_px();
+
+    // Simulate: the stored centroid should be preferred over a single pointer position
+    let fallback = [999.0, 999.0];
+    let final_pos = mt.current_centroid.unwrap_or(fallback);
+    assert!((final_pos[0] - 200.0).abs() < 0.01);
+    assert!((final_pos[1] - 266.67).abs() < 0.5);
+
+    // After reset, should fall back
+    mt.reset_gesture();
+    let final_pos = mt.current_centroid.unwrap_or(fallback);
+    assert_eq!(final_pos, fallback);
 }
 
 // ────────────────── gesture lifecycle simulation ──────────────────

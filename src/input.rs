@@ -76,6 +76,8 @@ pub struct MultiTouchState {
     // ── Three-finger swipe state ──
     /// Centroid of all pointers when the three-finger gesture began (px).
     pub initial_centroid: [f32; 2],
+    /// Running centroid of all pointers, updated on every pointermove.
+    pub current_centroid: Option<[f32; 2]>,
     // ── Four/five-finger state ──
     /// Whether the 4- or 5-finger action has already been committed this gesture.
     pub gesture_committed: bool,
@@ -138,6 +140,7 @@ impl MultiTouchState {
         self.initial_bpm = 0.0;
         self.initial_detune = 0.0;
         self.initial_centroid = [0.0, 0.0];
+        self.current_centroid = None;
         self.gesture_committed = false;
     }
 }

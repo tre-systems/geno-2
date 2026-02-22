@@ -462,17 +462,13 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
             mt.gesture_kind = TouchGestureKind::FourFingerTap;
             mt.gesture_committed = true;
 
-            let roots: [i32; 7] = [60, 62, 64, 65, 67, 69, 71];
-            let modes: [&[f32]; 7] = [
-                IONIAN, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, AEOLIAN, LOCRIAN,
-            ];
-            let ri = (js_sys::Math::random() * roots.len() as f64).floor() as usize;
-            let mi = (js_sys::Math::random() * modes.len() as f64).floor() as usize;
+            let ri = (js_sys::Math::random() * ROOTS_MUSICAL_ORDER.len() as f64).floor() as usize;
+            let mi = (js_sys::Math::random() * MODES_ORDER.len() as f64).floor() as usize;
 
             {
                 let mut eng = w.engine.borrow_mut();
-                eng.params.root_midi = roots[ri];
-                eng.params.scale = modes[mi];
+                eng.params.root_midi = ROOTS_MUSICAL_ORDER[ri];
+                eng.params.scale = MODES_ORDER[mi];
                 let voice_len = eng.voices.len();
                 for i in 0..voice_len {
                     eng.reseed_voice(i, None);

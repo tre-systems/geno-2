@@ -247,7 +247,7 @@ fn wire_pointermove(w: &InputWiring) {
         let mut eng = w.engine.borrow_mut();
         eng.set_bpm((50.0 + 122.0 * travel_n + 24.0 * motion).clamp(38.0, 180.0));
         let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 145.0 + (uvx - 0.5) * 90.0)
-            .clamp(-280.0, 280.0);
+            .clamp(-200.0, 200.0);
         eng.set_detune_cents(detune);
 
         let voice_len = eng.voices.len().max(1);
@@ -320,7 +320,7 @@ fn handle_two_finger_move(w: &InputWiring, w_px: f32, h_px: f32) {
 
     let new_bpm = (initial_bpm * ratio).clamp(PINCH_BPM_MIN, PINCH_BPM_MAX);
     let new_detune =
-        (initial_detune + angle_delta * ROTATE_DETUNE_SENSITIVITY).clamp(-280.0, 280.0);
+        (initial_detune + angle_delta * ROTATE_DETUNE_SENSITIVITY).clamp(-200.0, 200.0);
 
     {
         let mut eng = w.engine.borrow_mut();
@@ -476,7 +476,7 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
             }
             log::info!(
                 "[gesture] multitouch-4 randomize root={} mode={}",
-                roots[ri],
+                ROOTS_MUSICAL_ORDER[ri],
                 MODE_NAMES[mi]
             );
 
@@ -587,9 +587,14 @@ fn wire_pointerup(w: &InputWiring) {
             // remaining pointer(s) don't keep being treated as part of that gesture.
             {
                 let mut mt = w.multi_touch.borrow_mut();
-                if mt.gesture_kind == TouchGestureKind::TwoFingerPinchRotate
-                    && mt.pointers.len() < 2
-                {
+                let needs_reset = match mt.gesture_kind {
+                    TouchGestureKind::TwoFingerPinchRotate => mt.pointers.len() < 2,
+                    TouchGestureKind::ThreeFingerSwipe => mt.pointers.len() < 3,
+                    TouchGestureKind::FourFingerTap => mt.pointers.len() < 4,
+                    TouchGestureKind::FiveFingerTap => mt.pointers.len() < 5,
+                    TouchGestureKind::None => false,
+                };
+                if needs_reset {
                     mt.reset_gesture();
                 }
             }
@@ -675,7 +680,7 @@ fn wire_pointerup(w: &InputWiring) {
                 eng.params.scale = mode;
                 eng.set_bpm((50.0 + 122.0 * travel_n + 22.0 * motion_n).clamp(38.0, 180.0));
                 let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 160.0 + (uvx - 0.5) * 90.0)
-                    .clamp(-280.0, 280.0);
+                    .clamp(-200.0, 200.0);
                 eng.set_detune_cents(detune);
                 let voice_len = eng.voices.len();
                 for i in 0..voice_len {
@@ -863,7 +868,14 @@ fn wire_pointercancel(w: &InputWiring) {
         {
             let mut mt = w.multi_touch.borrow_mut();
             mt.pointers.remove(&pid);
-            if mt.pointers.is_empty() {
+            let needs_reset = match mt.gesture_kind {
+                TouchGestureKind::TwoFingerPinchRotate => mt.pointers.len() < 2,
+                TouchGestureKind::ThreeFingerSwipe => mt.pointers.len() < 3,
+                TouchGestureKind::FourFingerTap => mt.pointers.len() < 4,
+                TouchGestureKind::FiveFingerTap => mt.pointers.len() < 5,
+                TouchGestureKind::None => mt.pointers.is_empty(),
+            };
+            if needs_reset {
                 mt.reset_gesture();
             }
         }

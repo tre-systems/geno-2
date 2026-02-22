@@ -583,6 +583,16 @@ fn wire_pointerup(w: &InputWiring) {
         }
 
         if was_multitouch {
+            // If a multi-touch gesture has lost enough fingers, reset so the
+            // remaining pointer(s) don't keep being treated as part of that gesture.
+            {
+                let mut mt = w.multi_touch.borrow_mut();
+                if mt.gesture_kind == TouchGestureKind::TwoFingerPinchRotate
+                    && mt.pointers.len() < 2
+                {
+                    mt.reset_gesture();
+                }
+            }
             ev.prevent_default();
             return;
         }

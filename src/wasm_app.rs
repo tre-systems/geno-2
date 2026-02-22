@@ -261,6 +261,7 @@ async fn init() -> anyhow::Result<()> {
                     hover_index: hover_index.clone(),
                     drag_state: drag_state.clone(),
                     multi_touch: multi_touch.clone(),
+                    paused: paused.clone(),
                     voice_gains: voice_gains.clone(),
                     delay_sends: delay_sends.clone(),
                     reverb_sends: reverb_sends.clone(),

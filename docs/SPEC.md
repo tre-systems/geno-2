@@ -4,7 +4,7 @@
 
 This project is an **interactive generative music visualizer** built with Rust, WebAssembly (Wasm), and WebGPU. It produces evolving musical sequences (melodies and harmonies generated algorithmically) and visualizes them in a 3D scene in real-time. The system supports **polyphonic** audio (multiple simultaneous sound voices) and arranges these sound sources in a virtual 3D space so that users experience spatial audio. The 3D visuals react dynamically to the music, providing an immersive audio-visual experience.
 
-Users can **influence and interact** with the generative music without manually composing it. The interface is subtle and minimalistic – a hint overlay shows status and keys; primary controls are embedded in-scene and via keyboard. The primary target platform is **desktop web browsers** supporting WebGPU (no WebGL fallback by design). Mobile is not a focus.
+Users can **influence and interact** with the generative music without manually composing it. The interface is subtle and minimalistic – a hint overlay shows status and keys; primary controls are embedded in-scene and via keyboard. The primary target platform is **desktop web browsers** supporting WebGPU (no WebGL fallback by design). Touch-enabled devices (iPad, mobile) are supported through multitouch gesture controls.
 
 ### Current Capabilities (v1.2 - A Grade)
 
@@ -30,12 +30,13 @@ Users can **influence and interact** with the generative music without manually 
 
 - Keyboard-driven controls with comprehensive key mappings
 - Voice interaction: click (mute toggle), Alt+click (solo), Shift+click (reseed), drag (spatial positioning)
+- **Multitouch gesture support** (iPad/mobile): 2-finger pinch/rotate (BPM/detune), 3-finger swipe (root/mode), 4-finger tap (randomize), 5-finger tap (pause)
 - Dynamic hint overlay with BPM, pause state, and control reference
 - Fullscreen support (Enter/Escape) with proper canvas scaling
 
 **Quality Assurance:**
 
-- 31 comprehensive tests including property-based testing for mathematical functions
+- 62 comprehensive tests including property-based testing for mathematical functions and multitouch gesture coverage
 - Performance monitoring with FPS measurement and CI validation
 - Enhanced error handling with user-friendly WebGPU failure messages
 - Zero compilation warnings with strict linting and formatting
@@ -385,7 +386,7 @@ We identify additional interactions that could be mapped to in-scene controls:
 
   - Browser is single-threaded by default for WASM (unless using threading with Web Workers and shared memory, which is advanced). It may not be necessary to multi-thread this project heavily due to the scope (generating a few voices and moderate graphics can likely run on one thread). But if needed (for example heavy audio processing), consider using the web’s AudioWorklet (runs audio in a separate thread) or offload some calculations to a web worker.
 
-- **Ignoring Mobile:** As stated, we will not optimize for mobile. If a user tries on mobile, one of two things likely happen: WebGPU not available (so it won’t run), or if it is (future), performance may be low. We can detect small screens and either warn or not officially support it. The UI also might not be touch-optimized yet (dragging with touch etc., which is additional complexity – not in scope now).
+- **Touch / Mobile Support:** The application supports multitouch gestures via the Pointer Events API with `touch-action: none` on the canvas. Up to 5 simultaneous touches are tracked (iPad Safari limit). Gestures include: 2-finger pinch/rotate (BPM and detune), 3-finger swipe (root note and mode cycling), 4-finger tap (randomize), and 5-finger tap (pause/resume). WebGPU availability on mobile devices may still be limited.
 
 ## Development Status and S-Tier Roadmap
 
@@ -424,13 +425,21 @@ We identify additional interactions that could be mapped to in-scene controls:
 
 5. **✅ Quality Assurance & Testing**
 
-   - 31 comprehensive tests including property-based testing for mathematical functions
+   - 62 comprehensive tests including property-based testing for mathematical functions and 31 multitouch gesture tests
    - Enhanced browser testing with performance validation and keyboard interaction simulation
    - Zero compilation warnings with strict linting (clippy -D warnings)
    - Professional error handling and graceful WebGPU fallback behavior
    - Automated formatting and comprehensive code documentation
 
-6. **✅ Microtonality System Implementation**
+6. **✅ Multitouch Gesture Support**
+   - Full multitouch input via Pointer Events API with up to 5 simultaneous touches
+   - 2-finger pinch/rotate: continuous BPM and detune adjustment
+   - 3-finger swipe: root note cycling (circle-of-fifths) and mode cycling (Ionian–Locrian)
+   - 4-finger tap: randomize root + mode + reseed all voices
+   - 5-finger tap: pause/resume toggle
+   - 31 comprehensive gesture unit tests covering lifecycle, edge cases, and state management
+
+7. **✅ Microtonality System Implementation**
    - Global microtonal detune system with cent-based precision (±200¢ range)
    - Alternative tuning systems: 19-TET, 24-TET, 31-TET pentatonic scales
    - Comprehensive keyboard controls: `,` `.` `/` keys for detune adjustment with fine/coarse modes

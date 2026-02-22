@@ -38,6 +38,15 @@ Geno-2 is a new branch of the Geno concept with the same technology stack but a 
 - `Hold + Drag`: carve the field (heavy warp, reseeds, dense ripples)
 - `Release after drag`: drop carve into new root + mode + impact accents
 
+### Touch (iPad / mobile)
+
+- `2-finger pinch`: adjust BPM (spread = faster, pinch = slower)
+- `2-finger rotate`: adjust detune (twist clockwise = sharp, counter-clockwise = flat)
+- `3-finger swipe left/right`: cycle root note (circle-of-fifths order)
+- `3-finger swipe up/down`: cycle scale mode (Ionian through Locrian)
+- `4-finger tap`: randomize root + mode + reseed all voices
+- `5-finger tap`: toggle pause/resume
+
 ## Local Development
 
 Requirements:

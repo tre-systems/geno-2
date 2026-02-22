@@ -405,7 +405,7 @@ fn accent_gate(step: u64, voice_index: usize) -> f32 {
     let phase = (step + 3 * voice_index as u64) % cycle;
     let hard = if phase == 0 || phase == cycle / 2 {
         1.0
-    } else if phase % 4 == 0 {
+    } else if phase.is_multiple_of(4) {
         0.58
     } else {
         0.24

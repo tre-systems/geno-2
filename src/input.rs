@@ -84,14 +84,22 @@ pub struct MultiTouchState {
 }
 
 impl MultiTouchState {
-    /// Returns (distance, angle) between the first two tracked pointers, or None.
-    pub fn two_finger_metrics(&self) -> Option<(f32, f32)> {
+    /// Returns the positions of the two pointers with the lowest IDs, sorted by ID.
+    /// This ensures deterministic ordering regardless of HashMap iteration order.
+    fn sorted_pair(&self) -> Option<([f32; 2], [f32; 2])> {
         if self.pointers.len() < 2 {
             return None;
         }
-        let mut iter = self.pointers.values();
-        let a = *iter.next().unwrap();
-        let b = *iter.next().unwrap();
+        let mut ids: Vec<i32> = self.pointers.keys().copied().collect();
+        ids.sort_unstable();
+        let a = self.pointers[&ids[0]];
+        let b = self.pointers[&ids[1]];
+        Some((a, b))
+    }
+
+    /// Returns (distance, angle) between the two lowest-ID tracked pointers, or None.
+    pub fn two_finger_metrics(&self) -> Option<(f32, f32)> {
+        let (a, b) = self.sorted_pair()?;
         let dx = b[0] - a[0];
         let dy = b[1] - a[1];
         let dist = (dx * dx + dy * dy).sqrt().max(1.0);
@@ -99,14 +107,9 @@ impl MultiTouchState {
         Some((dist, angle))
     }
 
-    /// Returns the midpoint UV of the first two tracked pointers, given canvas size.
+    /// Returns the midpoint UV of the two lowest-ID tracked pointers, given canvas size.
     pub fn midpoint_uv(&self, w_px: f32, h_px: f32) -> Option<[f32; 2]> {
-        if self.pointers.len() < 2 {
-            return None;
-        }
-        let mut iter = self.pointers.values();
-        let a = *iter.next().unwrap();
-        let b = *iter.next().unwrap();
+        let (a, b) = self.sorted_pair()?;
         let mx = (a[0] + b[0]) * 0.5;
         let my = (a[1] + b[1]) * 0.5;
         Some([(mx / w_px).clamp(0.0, 1.0), (my / h_px).clamp(0.0, 1.0)])

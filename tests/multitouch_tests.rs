@@ -76,11 +76,9 @@ fn two_finger_metrics_returns_distance_and_angle() {
     let (dist, angle) = mt.two_finger_metrics().unwrap();
     // Distance should be 500 (3-4-5 triangle)
     assert!((dist - 500.0).abs() < 0.1);
-    // Angle should be atan2(400, 300) ≈ 0.927 rad or atan2(-400, -300) (differs by PI)
-    // due to HashMap non-deterministic iteration order
+    // Sorted by pointer ID: a=id1(0,0), b=id2(300,400), so angle = atan2(400, 300)
     let expected = 400.0_f32.atan2(300.0);
-    let diff = (angle - expected).abs();
-    assert!(diff < 0.01 || (diff - std::f32::consts::PI).abs() < 0.01);
+    assert!((angle - expected).abs() < 0.01);
 }
 
 #[test]
@@ -101,12 +99,8 @@ fn two_finger_metrics_horizontal() {
 
     let (dist, angle) = mt.two_finger_metrics().unwrap();
     assert!((dist - 200.0).abs() < 0.1);
-    // Horizontal: angle is 0 or ±PI depending on HashMap iteration order
-    assert!(
-        angle.abs() < 0.01 || (angle.abs() - std::f32::consts::PI).abs() < 0.01,
-        "expected horizontal angle (0 or ±PI), got {}",
-        angle
-    );
+    // Sorted by pointer ID: a=id1(0,50), b=id2(200,50), angle = atan2(0, 200) = 0
+    assert!(angle.abs() < 0.01, "expected angle ~0, got {}", angle);
 }
 
 #[test]
@@ -117,10 +111,10 @@ fn two_finger_metrics_vertical() {
 
     let (dist, angle) = mt.two_finger_metrics().unwrap();
     assert!((dist - 200.0).abs() < 0.1);
-    // Vertical: angle is ±PI/2 depending on HashMap iteration order
+    // Sorted by pointer ID: a=id1(50,0), b=id2(50,200), angle = atan2(200, 0) = PI/2
     assert!(
-        (angle.abs() - std::f32::consts::FRAC_PI_2).abs() < 0.01,
-        "expected vertical angle (±PI/2), got {}",
+        (angle - std::f32::consts::FRAC_PI_2).abs() < 0.01,
+        "expected angle ~PI/2, got {}",
         angle
     );
 }
@@ -508,19 +502,20 @@ fn centroid_with_negative_coordinates() {
 
 #[test]
 fn two_finger_rotation_wrapping() {
-    // Test that angle computation handles the full circle
+    // Test that angle computation handles the full circle.
+    // Sorted by ID: a=id1, b=id2; angle is from a→b.
     let mut mt = MultiTouchState::default();
     mt.pointers.insert(1, [400.0, 300.0]); // Center
-    mt.pointers.insert(2, [500.0, 300.0]); // Right
+    mt.pointers.insert(2, [500.0, 300.0]); // Right of center
 
     let (_, angle_right) = mt.two_finger_metrics().unwrap();
     assert!(angle_right.abs() < 0.01, "pointing right should be ~0 rad");
 
-    mt.pointers.insert(2, [300.0, 300.0]); // Left
+    mt.pointers.insert(2, [300.0, 300.0]); // Left of center
     let (_, angle_left) = mt.two_finger_metrics().unwrap();
     assert!(
         (angle_left.abs() - std::f32::consts::PI).abs() < 0.01,
-        "pointing left should be ~±PI rad"
+        "pointing left should be ~PI rad"
     );
 }
 

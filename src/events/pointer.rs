@@ -26,8 +26,8 @@ const ROTATE_DETUNE_SENSITIVITY: f32 = 180.0;
 /// Minimum centroid displacement (px) for a 3-finger swipe to register.
 const THREE_FINGER_SWIPE_THRESHOLD_PX: f32 = 40.0;
 
-/// Root notes in musical order for 3-finger swipe cycling.
-const ROOTS_MUSICAL_ORDER: [i32; 7] = [60, 62, 64, 65, 67, 69, 71]; // C D E F G A B
+/// Root notes in circle-of-fifths order for 3-finger swipe cycling.
+const ROOTS_MUSICAL_ORDER: [i32; 7] = [60, 67, 62, 69, 64, 71, 65]; // C G D A E B F
 
 /// Mode scales in order for 3-finger swipe cycling.
 const MODES_ORDER: [&[f32]; 7] = [

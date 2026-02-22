@@ -6,6 +6,8 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys as web;
 
+use std::collections::HashMap;
+
 #[derive(Default, Clone, Copy)]
 pub struct MouseState {
     pub x: f32,
@@ -36,6 +38,56 @@ pub struct DragState {
 pub struct RippleEvent {
     pub uv: [f32; 2],
     pub amp: f32,
+}
+
+/// Tracks all active pointer positions for multitouch gesture detection.
+#[derive(Default, Clone)]
+pub struct MultiTouchState {
+    /// Active pointers keyed by pointer_id, storing canvas-pixel positions.
+    pub pointers: HashMap<i32, [f32; 2]>,
+    /// Whether a two-finger gesture is in progress.
+    pub gesture_active: bool,
+    /// Distance between the two fingers when the gesture started (px).
+    pub initial_distance: f32,
+    /// Angle of the line between the two fingers when the gesture started (rad).
+    pub initial_angle: f32,
+    /// BPM snapshot when the two-finger gesture started.
+    pub initial_bpm: f32,
+    /// Detune snapshot when the two-finger gesture started (cents).
+    pub initial_detune: f32,
+}
+
+impl MultiTouchState {
+    /// Returns (distance, angle) between the two tracked pointers, or None.
+    pub fn two_finger_metrics(&self) -> Option<(f32, f32)> {
+        if self.pointers.len() < 2 {
+            return None;
+        }
+        let mut iter = self.pointers.values();
+        let a = *iter.next().unwrap();
+        let b = *iter.next().unwrap();
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let dist = (dx * dx + dy * dy).sqrt().max(1.0);
+        let angle = dy.atan2(dx);
+        Some((dist, angle))
+    }
+
+    /// Returns the midpoint UV of the two tracked pointers, given canvas size.
+    pub fn midpoint_uv(&self, w_px: f32, h_px: f32) -> Option<[f32; 2]> {
+        if self.pointers.len() < 2 {
+            return None;
+        }
+        let mut iter = self.pointers.values();
+        let a = *iter.next().unwrap();
+        let b = *iter.next().unwrap();
+        let mx = (a[0] + b[0]) * 0.5;
+        let my = (a[1] + b[1]) * 0.5;
+        Some([
+            (mx / w_px).clamp(0.0, 1.0),
+            (my / h_px).clamp(0.0, 1.0),
+        ])
+    }
 }
 #[inline]
 pub fn ray_sphere(ray_origin: Vec3, ray_dir: Vec3, center: Vec3, radius: f32) -> Option<f32> {

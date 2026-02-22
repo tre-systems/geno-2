@@ -243,6 +243,7 @@ async fn init() -> anyhow::Result<()> {
                 let mouse_state = Rc::new(RefCell::new(input::MouseState::default()));
                 let hover_index = Rc::new(RefCell::new(None::<usize>));
                 let drag_state = Rc::new(RefCell::new(input::DragState::default()));
+                let multi_touch = Rc::new(RefCell::new(input::MultiTouchState::default()));
 
                 // Keyboard controls
                 events::wire_global_keydown(
@@ -259,6 +260,7 @@ async fn init() -> anyhow::Result<()> {
                     mouse_state: mouse_state.clone(),
                     hover_index: hover_index.clone(),
                     drag_state: drag_state.clone(),
+                    multi_touch: multi_touch.clone(),
                     voice_gains: voice_gains.clone(),
                     delay_sends: delay_sends.clone(),
                     reverb_sends: reverb_sends.clone(),

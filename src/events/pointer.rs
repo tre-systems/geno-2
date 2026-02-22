@@ -16,6 +16,13 @@ const RIPPLE_INTERVAL_PX: f32 = 88.0;
 const RESEED_INTERVAL_SEC: f64 = 0.22;
 const ROOT_TABLE: [i32; 15] = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
 
+/// Minimum BPM for pinch gesture.
+const PINCH_BPM_MIN: f32 = 38.0;
+/// Maximum BPM for pinch gesture.
+const PINCH_BPM_MAX: f32 = 220.0;
+/// Sensitivity for rotation→detune mapping (cents per radian).
+const ROTATE_DETUNE_SENSITIVITY: f32 = 180.0;
+
 #[derive(Clone)]
 pub struct InputWiring {
     pub canvas: web::HtmlCanvasElement,
@@ -23,6 +30,7 @@ pub struct InputWiring {
     pub mouse_state: Rc<RefCell<input::MouseState>>,
     pub hover_index: Rc<RefCell<Option<usize>>>,
     pub drag_state: Rc<RefCell<input::DragState>>,
+    pub multi_touch: Rc<RefCell<input::MultiTouchState>>,
     pub voice_gains: Rc<Vec<web::GainNode>>,
     pub delay_sends: Rc<Vec<web::GainNode>>,
     pub reverb_sends: Rc<Vec<web::GainNode>>,
@@ -34,6 +42,7 @@ pub fn wire_input_handlers(w: InputWiring) {
     wire_pointermove(&w);
     wire_pointerdown(&w);
     wire_pointerup(&w);
+    wire_pointercancel(&w);
 }
 
 fn wire_pointermove(w: &InputWiring) {
@@ -44,11 +53,89 @@ fn wire_pointermove(w: &InputWiring) {
         let pos = input::pointer_canvas_px(&ev, &w.canvas);
         let w_px = w.canvas.width().max(1) as f32;
         let h_px = w.canvas.height().max(1) as f32;
+        let pid = ev.pointer_id();
 
         if !canvas_connected {
             return;
         }
 
+        // Always update pointer map
+        {
+            let mut mt = w.multi_touch.borrow_mut();
+            if mt.pointers.contains_key(&pid) {
+                mt.pointers.insert(pid, [pos.x, pos.y]);
+            }
+        }
+
+        // ── Multitouch path: pinch → BPM, rotate → detune ──
+        let mt_active = w.multi_touch.borrow().gesture_active;
+        if mt_active {
+            let (ratio, angle_delta) = {
+                let mt = w.multi_touch.borrow();
+                if let Some((dist, angle)) = mt.two_finger_metrics() {
+                    let ratio = dist / mt.initial_distance.max(1.0);
+                    let mut da = angle - mt.initial_angle;
+                    while da > std::f32::consts::PI {
+                        da -= std::f32::consts::TAU;
+                    }
+                    while da < -std::f32::consts::PI {
+                        da += std::f32::consts::TAU;
+                    }
+                    (ratio, da)
+                } else {
+                    return;
+                }
+            };
+
+            let (initial_bpm, initial_detune) = {
+                let mt = w.multi_touch.borrow();
+                (mt.initial_bpm, mt.initial_detune)
+            };
+
+            let new_bpm = (initial_bpm * ratio).clamp(PINCH_BPM_MIN, PINCH_BPM_MAX);
+            let new_detune =
+                (initial_detune + angle_delta * ROTATE_DETUNE_SENSITIVITY).clamp(-280.0, 280.0);
+
+            {
+                let mut eng = w.engine.borrow_mut();
+                eng.set_bpm(new_bpm);
+                eng.set_detune_cents(new_detune);
+            }
+
+            // Visual feedback: energy boost + ripple at midpoint
+            {
+                let mut ms = w.mouse_state.borrow_mut();
+                let pinch_intensity = (ratio - 1.0).abs().clamp(0.0, 1.0);
+                let rotate_intensity = angle_delta.abs().clamp(0.0, 1.0);
+                let energy_target =
+                    (0.40 + 0.55 * pinch_intensity + 0.45 * rotate_intensity).clamp(0.0, 1.8);
+                ms.gesture_energy =
+                    (ms.gesture_energy * 0.78 + energy_target * 0.22).clamp(0.0, 1.8);
+                ms.gesture_flash = (ms.gesture_flash + 0.04 + 0.08 * rotate_intensity).clamp(0.0, 1.6);
+                ms.gesture_spin =
+                    (ms.gesture_spin + angle_delta * 0.02).clamp(-4.0, 4.0);
+            }
+
+            // Update mouse position to midpoint so swirl tracks between fingers
+            if let Some(mid_uv) = w.multi_touch.borrow().midpoint_uv(w_px, h_px) {
+                let mut ms = w.mouse_state.borrow_mut();
+                ms.x = mid_uv[0] * w_px;
+                ms.y = mid_uv[1] * h_px;
+            }
+
+            // Show hint overlay with current values
+            if let Some(window) = web::window() {
+                if let Some(document) = window.document() {
+                    overlay::update_hint(&document, new_detune, new_bpm, "");
+                    overlay::show_hint(&document);
+                }
+            }
+
+            ev.prevent_default();
+            return;
+        }
+
+        // ── Single-pointer path (existing behavior) ──
         {
             let mut ms = w.mouse_state.borrow_mut();
             ms.x = pos.x;
@@ -224,39 +311,92 @@ fn wire_pointerdown(w: &InputWiring) {
     let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move |ev: web::PointerEvent| {
         let pos = input::pointer_canvas_px(&ev, &w.canvas);
         let now = w.audio_ctx.current_time();
+        let pid = ev.pointer_id();
 
-        {
-            let mut ds = w.drag_state.borrow_mut();
-            ds.pending = true;
-            ds.active = false;
-            ds.start_x = pos.x;
-            ds.start_y = pos.y;
-            ds.last_x = pos.x;
-            ds.last_y = pos.y;
-            ds.travel_px = 0.0;
-            ds.spin_accum = 0.0;
-            ds.peak_motion = 0.0;
-            ds.last_ripple_travel = 0.0;
-            ds.last_reseed_time = now;
+        // Register this pointer
+        let pointer_count = {
+            let mut mt = w.multi_touch.borrow_mut();
+            mt.pointers.insert(pid, [pos.x, pos.y]);
+            mt.pointers.len()
+        };
+
+        if pointer_count >= 2 {
+            // ── Transition to multitouch: cancel any single-finger drag ──
+            {
+                let mut ds = w.drag_state.borrow_mut();
+                ds.active = false;
+                ds.pending = false;
+            }
+
+            // Snapshot initial two-finger metrics and engine state
+            let mut mt = w.multi_touch.borrow_mut();
+            if !mt.gesture_active {
+                if let Some((dist, angle)) = mt.two_finger_metrics() {
+                    let eng = w.engine.borrow();
+                    mt.gesture_active = true;
+                    mt.initial_distance = dist;
+                    mt.initial_angle = angle;
+                    mt.initial_bpm = eng.params.bpm;
+                    mt.initial_detune = eng.params.detune_cents;
+                    log::info!(
+                        "[gesture] multitouch begin dist={:.0}px angle={:.2}rad",
+                        dist,
+                        angle
+                    );
+                }
+            }
+
+            // Ripple at midpoint
+            let w_px = w.canvas.width().max(1) as f32;
+            let h_px = w.canvas.height().max(1) as f32;
+            if let Some(mid) = mt.midpoint_uv(w_px, h_px) {
+                *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
+                    uv: mid,
+                    amp: 1.45,
+                });
+            }
+
+            // Boost gesture energy for visual feedback
+            {
+                let mut ms = w.mouse_state.borrow_mut();
+                ms.gesture_energy = ms.gesture_energy.max(0.55);
+                ms.gesture_flash = ms.gesture_flash.max(0.30);
+            }
+        } else {
+            // ── Single pointer: existing behavior ──
+            {
+                let mut ds = w.drag_state.borrow_mut();
+                ds.pending = true;
+                ds.active = false;
+                ds.start_x = pos.x;
+                ds.start_y = pos.y;
+                ds.last_x = pos.x;
+                ds.last_y = pos.y;
+                ds.travel_px = 0.0;
+                ds.spin_accum = 0.0;
+                ds.peak_motion = 0.0;
+                ds.last_ripple_travel = 0.0;
+                ds.last_reseed_time = now;
+            }
+
+            {
+                let mut ms = w.mouse_state.borrow_mut();
+                ms.down = true;
+                ms.x = pos.x;
+                ms.y = pos.y;
+                ms.gesture_energy = ms.gesture_energy.max(0.15);
+                ms.gesture_flash = ms.gesture_flash.max(0.10);
+            }
+
+            let [uvx, uvy] = input::pointer_canvas_uv(&ev, &w.canvas);
+            *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
+                uv: [uvx, uvy],
+                amp: 1.15,
+            });
+            *w.hover_index.borrow_mut() = None;
         }
 
-        {
-            let mut ms = w.mouse_state.borrow_mut();
-            ms.down = true;
-            ms.x = pos.x;
-            ms.y = pos.y;
-            ms.gesture_energy = ms.gesture_energy.max(0.15);
-            ms.gesture_flash = ms.gesture_flash.max(0.10);
-        }
-
-        let [uvx, uvy] = input::pointer_canvas_uv(&ev, &w.canvas);
-        *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-            uv: [uvx, uvy],
-            amp: 1.15,
-        });
-        *w.hover_index.borrow_mut() = None;
-
-        _ = w.canvas.set_pointer_capture(ev.pointer_id());
+        _ = w.canvas.set_pointer_capture(pid);
         ev.prevent_default();
     }) as Box<dyn FnMut(_)>);
 
@@ -271,7 +411,41 @@ fn wire_pointerup(w: &InputWiring) {
     let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move |ev: web::PointerEvent| {
         let pos = input::pointer_canvas_px(&ev, &w.canvas);
         let [uvx, uvy] = input::pointer_canvas_uv(&ev, &w.canvas);
+        let pid = ev.pointer_id();
 
+        // ── Multitouch: remove pointer and possibly end gesture ──
+        let was_multitouch = {
+            let mt = w.multi_touch.borrow();
+            mt.gesture_active
+        };
+
+        {
+            let mut mt = w.multi_touch.borrow_mut();
+            mt.pointers.remove(&pid);
+
+            if was_multitouch && mt.pointers.len() < 2 {
+                log::info!("[gesture] multitouch end");
+                mt.gesture_active = false;
+
+                // Reseed all voices on multitouch release for musical variety
+                let mut eng = w.engine.borrow_mut();
+                let voice_len = eng.voices.len();
+                for i in 0..voice_len {
+                    eng.reseed_voice(i, None);
+                }
+            }
+        }
+
+        if was_multitouch {
+            // Don't process as single-pointer release after multitouch
+            if w.multi_touch.borrow().pointers.is_empty() {
+                w.mouse_state.borrow_mut().down = false;
+            }
+            ev.prevent_default();
+            return;
+        }
+
+        // ── Single-pointer release (existing behavior) ──
         let (
             had_pointer_gesture,
             was_dragging,
@@ -444,6 +618,37 @@ fn wire_pointerup(w: &InputWiring) {
 
     if let Some(wnd) = web::window() {
         _ = wnd.add_event_listener_with_callback("pointerup", closure.as_ref().unchecked_ref());
+    }
+
+    closure.forget();
+}
+
+fn wire_pointercancel(w: &InputWiring) {
+    let w = w.clone();
+
+    let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move |ev: web::PointerEvent| {
+        let pid = ev.pointer_id();
+
+        {
+            let mut mt = w.multi_touch.borrow_mut();
+            mt.pointers.remove(&pid);
+            if mt.gesture_active && mt.pointers.len() < 2 {
+                mt.gesture_active = false;
+            }
+        }
+
+        {
+            let mut ds = w.drag_state.borrow_mut();
+            ds.active = false;
+            ds.pending = false;
+        }
+
+        w.mouse_state.borrow_mut().down = false;
+    }) as Box<dyn FnMut(_)>);
+
+    if let Some(wnd) = web::window() {
+        _ = wnd
+            .add_event_listener_with_callback("pointercancel", closure.as_ref().unchecked_ref());
     }
 
     closure.forget();

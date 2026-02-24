@@ -12,13 +12,20 @@ This document outlines the path from the current **A** grade to **S-tier** statu
 - [x] Property-based testing for mathematical functions
 - [x] Improved WebGPU error handling with user feedback
 - [x] Comprehensive shader documentation
-- [x] 31 comprehensive tests including property-based testing for mathematical functions
+- [x] 62 comprehensive tests including property-based testing for mathematical functions and multitouch gestures
 - [x] **COMPLETED: Full microtonality system implementation**
   - [x] Global detune system with cent-based precision (±200¢)
   - [x] Alternative tuning systems: 19-TET, 24-TET, 31-TET pentatonic scales
   - [x] Keyboard controls: `,` `.` `/` keys for detune with fine/coarse adjustment
   - [x] Scale selection: `8` `9` `0` keys for alternative tuning systems
   - [x] Real-time visual feedback in hint overlay
+- [x] **COMPLETED: Multitouch gesture support (iPad/mobile)**
+  - [x] Pointer Events API integration with up to 5 simultaneous touches
+  - [x] 2-finger pinch/rotate: continuous BPM and detune adjustment
+  - [x] 3-finger swipe: root note cycling (circle-of-fifths) and mode cycling
+  - [x] 4-finger tap: randomize root + mode + reseed all voices
+  - [x] 5-finger tap: pause/resume toggle
+  - [x] 31 comprehensive multitouch unit tests (62 total tests)
 
 ---
 

@@ -5,8 +5,6 @@ pub mod input;
 #[cfg(target_arch = "wasm32")]
 mod audio;
 #[cfg(target_arch = "wasm32")]
-mod camera;
-#[cfg(target_arch = "wasm32")]
 mod constants;
 #[cfg(target_arch = "wasm32")]
 mod dom;

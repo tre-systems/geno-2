@@ -2,7 +2,6 @@ name = "geno-2"
 compatibility_date = "2024-08-06"
 compatibility_flags = ["nodejs_compat"]
 main = "worker.js"
-workers_dev = true
 
 [assets]
 directory = "./dist"
@@ -11,7 +10,11 @@ html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"
 
 [vars]
-ENVIRONMENT = "private"
+ENVIRONMENT = "production"
+
+[[routes]]
+pattern = "geno-2.tre.systems/*"
+zone_name = "tre.systems"
 
 [build]
 command = "npm run build"

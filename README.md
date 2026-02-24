@@ -1,42 +1,55 @@
-# Geno-2: Prismatic Generative Instrument
+# Geno-2: Ambient Generative Instrument
 
-Geno-2 is a new branch of the Geno concept with the same technology stack but a distinctly different musical and visual identity.
+<div align="center">
+
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?style=for-the-badge&logo=webassembly&logoColor=white)
+![WebGPU](https://img.shields.io/badge/WebGPU-005A9C?style=for-the-badge&logo=gpu&logoColor=white)
+[![CI](https://github.com/rgilks/geno-2/actions/workflows/ci.yml/badge.svg)](https://github.com/rgilks/geno-2/actions/workflows/ci.yml)
+
+</div>
+
+<div align="center">
+  <img src="/docs/screenshot.png" alt="geno-2 screenshot" width="902" />
+</div>
+
+Geno-2 is an original audiovisual instrument built with Rust + WebAssembly + WebGPU + WebAudio.  
+It keeps the Geno stack, but shifts into a different artistic direction: shoegaze/ambient tone design and high-energy kaleidoscopic interaction.
+
+## Highlights
+
+- Original visual system: geometric lattice distortion, ripple propagation, and audio-coupled swirl field.
+- Original gesture model: click for flare stacks; hold+drag to carve/reseed the field with strong musical and visual impact.
+- Ambient-forward mix design with dynamic leveling, compression, and FX mapping.
+- Deterministic build/deploy pipeline with CI checks on Rust + browser integration tests.
 
 ## Stack
 
-- Rust (core engine)
+- Rust 2021
 - WebAssembly (`wasm-pack`)
-- WebGPU (`wgpu` + WGSL shaders)
+- WebGPU (`wgpu`, WGSL shaders)
 - WebAudio (procedural synthesis + FX graph)
-- Cloudflare Worker for static hosting
-
-## What Is Different From Geno-1
-
-- New rhythm engine: polymetric/euclidean phrase logic with motif-led register motion
-- New interaction model: click triggers flare stacks, hold+drag carves the field with shockwaves and reseeding
-- New FX tone: louder output, tighter room tail, quicker delay, waveform-shaped envelopes
-- New visual direction: geometric kaleidoscope lattice + print-like post grade (not wave sheets)
-- Restyled overlay/theme for project identity
+- Cloudflare Workers static hosting (`wrangler`)
 
 ## Controls
 
 - `A..G`: set root note
 - `1..7`: set mode
-- `8/9/0`: set alternate pentatonic tuning
-- `P`: reset to C Major Pentatonic preset
-- `R`: new sequence seeds
+- `8/9/0`: alternate pentatonic tunings
+- `P`: reset to C Major pentatonic preset
+- `R`: reseed sequence
 - `T`: random root + mode
 - `Space`: pause/resume
-- `,` / `.`: detune (hold Shift for fine adjustment)
+- `,` / `.`: detune (hold `Shift` for fine adjustment)
 - `/`: reset detune
 - `←/→`: tempo
 - `↑/↓`: master volume
-- `M`: mute/unmute
+- `M`: mute/unmute master
 - `Enter` / `Esc`: fullscreen
 - `H`: toggle help panel
-- `Click`: trigger a flare chord stack + strong visual shockwave
-- `Hold + Drag`: carve the field (heavy warp, reseeds, dense ripples)
-- `Release after drag`: drop carve into new root + mode + impact accents
+- `Click`: flare chord stack + shockwave
+- `Hold + Drag`: carve/warp field + continuous reseeding
+- `Release`: drop carve into new root/mode with accent burst
 
 ### Touch (iPad / mobile)
 
@@ -51,7 +64,7 @@ Geno-2 is a new branch of the Geno concept with the same technology stack but a 
 
 Requirements:
 
-- Node 20+
+- Node.js 20+
 - Rust stable
 - `wasm-pack`
 
@@ -61,8 +74,18 @@ Commands:
 - `npm run dev`
 - `npm run check`
 
-## Deployment Notes
+## Quality Gate
 
-- `wrangler.toml` is set to `workers_dev = true` and `ENVIRONMENT = "private"` by default.
-- CI deploy runs on `main` only when Cloudflare secrets exist.
-- Keep the GitHub repo private until you are ready to expose/demo.
+`npm run check` runs:
+
+- `cargo fmt --check`
+- `cargo clippy -- -D warnings`
+- `cargo test`
+- production wasm build
+- browser integration test (`web-test.js`)
+
+## Deployment
+
+- Build: `npm run build`
+- Deploy: `npx --yes wrangler deploy`
+- CI deploys on `main` only when `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.

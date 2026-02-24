@@ -19,7 +19,14 @@
     "type": "git",
     "url": "git+https://github.com/rgilks/geno-2.git"
   },
-  "keywords": [],
+  "keywords": [
+    "generative-art",
+    "webgpu",
+    "webaudio",
+    "wasm",
+    "rust",
+    "ambient-music"
+  ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",

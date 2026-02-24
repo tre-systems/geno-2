@@ -1,3 +1,4 @@
+use crate::audio;
 use crate::constants::*;
 use crate::core::{MusicEngine, Waveform};
 use crate::input;
@@ -273,36 +274,23 @@ impl<'a> FrameContext<'a> {
         }
 
         if !*self.paused.borrow() {
+            let waveforms: Vec<Waveform> = {
+                let engine_ref = self.engine.borrow();
+                engine_ref.configs.iter().map(|cfg| cfg.waveform).collect()
+            };
+
             for ev in &note_events {
-                let src = match web::OscillatorNode::new(&self.audio_ctx) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                match self.engine.borrow().configs[ev.voice_index].waveform {
-                    Waveform::Sine => src.set_type(web::OscillatorType::Sine),
-                    // Waveform::Square => src.set_type(web::OscillatorType::Square),
-                    Waveform::Saw => src.set_type(web::OscillatorType::Sawtooth),
-                    Waveform::Triangle => src.set_type(web::OscillatorType::Triangle),
-                }
-                src.frequency().set_value(ev.frequency_hz);
-                let gain = match web::GainNode::new(&self.audio_ctx) {
-                    Ok(g) => g,
-                    Err(_) => continue,
-                };
-                gain.gain().set_value(0.0);
-                let t0 = audio_time + 0.01;
-                _ = gain
-                    .gain()
-                    .linear_ramp_to_value_at_time(ev.velocity as f32, t0 + 0.02);
-                _ = gain
-                    .gain()
-                    .linear_ramp_to_value_at_time(0.0_f32, t0 + ev.duration_sec as f64);
-                _ = src.connect_with_audio_node(&gain);
-                _ = gain.connect_with_audio_node(&self.voice_gains[ev.voice_index]);
-                _ = gain.connect_with_audio_node(&self.delay_sends[ev.voice_index]);
-                _ = gain.connect_with_audio_node(&self.reverb_sends[ev.voice_index]);
-                _ = src.start_with_when(t0);
-                _ = src.stop_with_when(t0 + ev.duration_sec as f64 + 0.02);
+                let wf = waveforms[ev.voice_index];
+                audio::trigger_one_shot(
+                    &self.audio_ctx,
+                    wf,
+                    ev.frequency_hz,
+                    ev.velocity as f32,
+                    ev.duration_sec as f64,
+                    &self.voice_gains[ev.voice_index],
+                    &self.delay_sends[ev.voice_index],
+                    &self.reverb_sends[ev.voice_index],
+                );
             }
         }
     }

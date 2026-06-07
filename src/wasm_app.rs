@@ -241,7 +241,6 @@ async fn init() -> anyhow::Result<()> {
 
                 // ---------------- Interaction state ----------------
                 let mouse_state = Rc::new(RefCell::new(input::MouseState::default()));
-                let hover_index = Rc::new(RefCell::new(None::<usize>));
                 let drag_state = Rc::new(RefCell::new(input::DragState::default()));
                 let multi_touch = Rc::new(RefCell::new(input::MultiTouchState::default()));
 
@@ -258,7 +257,6 @@ async fn init() -> anyhow::Result<()> {
                     canvas: canvas_for_click_inner.clone(),
                     engine: engine.clone(),
                     mouse_state: mouse_state.clone(),
-                    hover_index: hover_index.clone(),
                     drag_state: drag_state.clone(),
                     multi_touch: multi_touch.clone(),
                     paused: paused.clone(),
@@ -274,7 +272,6 @@ async fn init() -> anyhow::Result<()> {
                     engine: engine.clone(),
                     paused: paused.clone(),
                     pulses: pulses.clone(),
-                    hover_index: hover_index.clone(),
                     canvas: canvas_for_click_inner.clone(),
                     mouse: mouse_state.clone(),
                     audio_ctx: audio_ctx.clone(),

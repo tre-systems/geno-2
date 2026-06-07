@@ -50,7 +50,6 @@ pub struct InputWiring {
     pub canvas: web::HtmlCanvasElement,
     pub engine: Rc<RefCell<MusicEngine>>,
     pub mouse_state: Rc<RefCell<input::MouseState>>,
-    pub hover_index: Rc<RefCell<Option<usize>>>,
     pub drag_state: Rc<RefCell<input::DragState>>,
     pub multi_touch: Rc<RefCell<input::MultiTouchState>>,
     pub paused: Rc<RefCell<bool>>,
@@ -131,8 +130,6 @@ fn wire_pointermove(w: &InputWiring) {
             ms.x = pos.x;
             ms.y = pos.y;
         }
-
-        *w.hover_index.borrow_mut() = None;
 
         let (
             drag_active,
@@ -413,7 +410,6 @@ fn wire_pointerdown(w: &InputWiring) {
                 uv: [uvx, uvy],
                 amp: 1.15,
             });
-            *w.hover_index.borrow_mut() = None;
         }
 
         _ = w.canvas.set_pointer_capture(pid);

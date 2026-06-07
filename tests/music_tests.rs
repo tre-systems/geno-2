@@ -65,29 +65,6 @@ fn engine_tick_emits_some_events_over_time() {
     }
 }
 
-#[test]
-fn engine_toggle_mute_and_solo() {
-    let mut engine = make_engine();
-    assert!(!engine.voices[1].muted);
-    engine.toggle_mute(1);
-    assert!(engine.voices[1].muted);
-    engine.toggle_mute(1);
-    assert!(!engine.voices[1].muted);
-
-    engine.toggle_solo(2);
-    for (i, v) in engine.voices.iter().enumerate() {
-        if i == 2 {
-            assert!(!v.muted);
-        } else {
-            assert!(v.muted);
-        }
-    }
-    engine.toggle_solo(2);
-    for v in engine.voices.iter() {
-        assert!(!v.muted);
-    }
-}
-
 // Property-based tests for midi_to_hz function
 #[test]
 fn midi_to_hz_octave_doubling_property() {

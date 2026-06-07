@@ -17,8 +17,6 @@ pub struct FrameContext<'a> {
     pub engine: Rc<RefCell<MusicEngine>>,
     pub paused: Rc<RefCell<bool>>,
     pub pulses: Rc<RefCell<Vec<f32>>>,
-    #[allow(dead_code)] // Used in pointer events, not directly in frame module
-    pub hover_index: Rc<RefCell<Option<usize>>>,
 
     pub canvas: web::HtmlCanvasElement,
     pub mouse: Rc<RefCell<input::MouseState>>,

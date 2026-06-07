@@ -48,7 +48,6 @@ pub struct NoteEvent {
 #[derive(Clone, Debug)]
 pub struct VoiceState {
     pub position: Vec3,
-    pub muted: bool,
 }
 
 /// Global engine parameters controlling tempo and scale.
@@ -102,15 +101,13 @@ pub const TET31_PENTATONIC: &[f32] = &[0.0, 2.4, 4.8, 7.2, 9.6, 12.0];
 ///
 /// Typical usage:
 /// - Construct with `MusicEngine::new(configs, params, seed)`
-/// - Call `tick(dt, now_sec, &mut out_events)` regularly to schedule audio
-/// - Use `toggle_mute`, `toggle_solo`, `reseed_voice`, and `set_voice_position`
-///   to interact with the engine state
+/// - Call `tick(dt, &mut out_events)` regularly to schedule audio
+/// - Use `reseed_voice` and `set_voice_position` to interact with engine state
 pub struct MusicEngine {
     pub voices: Vec<VoiceState>,
     pub configs: Vec<VoiceConfig>,
     pub params: EngineParams,
     rngs: Vec<StdRng>,
-    solo_index: Option<usize>,
     beat_accum: f64,
     step_counter: u64,
 }
@@ -122,7 +119,6 @@ impl MusicEngine {
             .iter()
             .map(|c| VoiceState {
                 position: c.base_position,
-                muted: false,
             })
             .collect::<Vec<_>>();
 
@@ -139,7 +135,6 @@ impl MusicEngine {
             configs,
             params,
             rngs,
-            solo_index: None,
             beat_accum: 0.0,
             step_counter: 0,
         }
@@ -171,13 +166,6 @@ impl MusicEngine {
         self.params.detune_cents = 0.0;
     }
 
-    /// Toggle mute flag for a voice.
-    pub fn toggle_mute(&mut self, voice_index: usize) {
-        if let Some(v) = self.voices.get_mut(voice_index) {
-            v.muted = !v.muted;
-        }
-    }
-
     /// Update the engine-space position of a voice.
     pub fn set_voice_position(&mut self, voice_index: usize, pos: Vec3) {
         if let Some(v) = self.voices.get_mut(voice_index) {
@@ -190,25 +178,6 @@ impl MusicEngine {
         if let Some(r) = self.rngs.get_mut(voice_index) {
             let new_seed = seed.unwrap_or_else(|| r.gen());
             *r = StdRng::seed_from_u64(new_seed);
-        }
-    }
-
-    /// Solo a voice. Toggling solo on the same voice clears solo mode.
-    pub fn toggle_solo(&mut self, voice_index: usize) {
-        match self.solo_index {
-            Some(idx) if idx == voice_index => {
-                // Clear solo -> unmute all
-                self.solo_index = None;
-                for v in &mut self.voices {
-                    v.muted = false;
-                }
-            }
-            _ => {
-                self.solo_index = Some(voice_index);
-                for (i, v) in self.voices.iter_mut().enumerate() {
-                    v.muted = i != voice_index;
-                }
-            }
         }
     }
 
@@ -238,10 +207,6 @@ impl MusicEngine {
         let phrase_shift = PHRASE_ROOT_SHIFTS[phrase_idx];
 
         for (i, voice) in self.voices.iter().enumerate() {
-            if voice.muted {
-                continue;
-            }
-
             let rng = &mut self.rngs[i];
             let scale = self.params.scale;
             if scale.is_empty() {

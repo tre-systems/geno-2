@@ -40,7 +40,6 @@ pub struct GpuState<'a> {
     bg_from_bloom_a: wgpu::BindGroup,
     bg_from_bloom_b: wgpu::BindGroup,
     bg_bloom_a_only: wgpu::BindGroup, // group1 for composite, sampling bloom A
-    bg_bloom_b_only: wgpu::BindGroup, // group1 for composite, sampling bloom B
 
     bright_pipeline: wgpu::RenderPipeline,
     blur_pipeline: wgpu::RenderPipeline,
@@ -248,21 +247,6 @@ impl<'a> GpuState<'a> {
                 },
             ],
         });
-        let bg_bloom_b_only = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_bloom_b_only"),
-            layout: &post.bgl1,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bloom_b_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-            ],
-        });
-
         let bright_pipeline = post.bright_pipeline.clone();
         let blur_pipeline = post.blur_pipeline.clone();
         let composite_pipeline = post.composite_pipeline.clone();
@@ -287,7 +271,6 @@ impl<'a> GpuState<'a> {
             bg_from_bloom_a,
             bg_from_bloom_b,
             bg_bloom_a_only,
-            bg_bloom_b_only,
             bright_pipeline,
             blur_pipeline,
             composite_pipeline,
@@ -367,7 +350,6 @@ impl<'a> GpuState<'a> {
         voice_positions: &[Vec3],
         pulse_energy: &[f32],
     ) -> Result<(), wgpu::SurfaceError> {
-        self.resize_if_needed(self.width, self.height);
         self.time_accum += dt_sec.max(0.0);
         let frame = self.surface.get_current_texture()?;
         let view = frame
@@ -530,7 +512,7 @@ impl<'a> GpuState<'a> {
 
 impl<'a> GpuState<'a> {
     fn rebuild_post_bind_groups(&mut self) {
-        let (bg_hdr, bg_from_a, bg_from_b, bg_a_only, bg_b_only) = post::rebuild_bind_groups(
+        let (bg_hdr, bg_from_a, bg_from_b, bg_a_only) = post::rebuild_bind_groups(
             &self.device,
             &self.post,
             &self.linear_sampler,
@@ -542,6 +524,5 @@ impl<'a> GpuState<'a> {
         self.bg_from_bloom_a = bg_from_a;
         self.bg_from_bloom_b = bg_from_b;
         self.bg_bloom_a_only = bg_a_only;
-        self.bg_bloom_b_only = bg_b_only;
     }
 }

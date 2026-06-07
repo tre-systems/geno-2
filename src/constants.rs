@@ -64,5 +64,10 @@ pub const LEVEL_SPAN: f32 = 0.28;
 pub const CAMERA_Z: f32 = 6.0;
 
 // Post-processing defaults
-pub const BLOOM_STRENGTH: f32 = 0.68;
+// Bloom blur weights are normalized (sum 1.0), so this is the true composite mix.
+pub const BLOOM_STRENGTH: f32 = 0.30;
 pub const BLOOM_THRESHOLD: f32 = 0.68;
+
+// Cap the canvas backing scale so high-DPR phones don't render the fullscreen
+// shader at 3x+ resolution (the dominant mobile GPU cost).
+pub const MAX_DEVICE_PIXEL_RATIO: f64 = 2.0;

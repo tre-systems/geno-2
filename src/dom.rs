@@ -22,7 +22,9 @@ pub fn add_click_listener(
 
 pub fn sync_canvas_backing_size(canvas: &web::HtmlCanvasElement) {
     if let Some(w) = web::window() {
-        let dpr = w.device_pixel_ratio();
+        let dpr = w
+            .device_pixel_ratio()
+            .min(crate::constants::MAX_DEVICE_PIXEL_RATIO);
         let el: web::Element = canvas.clone().unchecked_into();
         let rect = el.get_bounding_client_rect();
         let w_px = (rect.width() * dpr) as u32;

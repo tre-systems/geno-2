@@ -76,7 +76,7 @@ pub(crate) fn create_waves_resources(
             entry_point: Some("fs_waves"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: hdr_format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),

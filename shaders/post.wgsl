@@ -71,10 +71,11 @@ fn fs_bright(inp: VsOut) -> @location(0) vec4<f32> {
 fn fs_blur(inp: VsOut) -> @location(0) vec4<f32> {
     let texel = u_post.blur_dir / u_post.resolution;
 
-    let w0 = 0.05;
-    let w1 = 0.09;
-    let w2 = 0.12;
-    let w3 = 0.15;
+    // Normalized weights (sum = 1.0) so each blur pass preserves brightness.
+    let w0 = 0.0746;
+    let w1 = 0.1343;
+    let w2 = 0.1791;
+    let w3 = 0.2239;
 
     var acc = vec3<f32>(0.0);
     acc += textureSample(hdr_tex, hdr_sampler, inp.uv - texel * 3.0).rgb * w0;

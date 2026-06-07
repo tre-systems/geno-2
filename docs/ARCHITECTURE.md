@@ -1,6 +1,6 @@
 # Geno-2 — Architecture
 
-> Scope: how the code is organized and how one frame of audio + video is produced. Geno-2 is a single Rust crate (`app-web`) compiled to WebAssembly: a generative music engine, a WebAudio FX graph, and a fullscreen WebGPU shader, wired together by one `requestAnimationFrame` loop.
+> Scope: how the code is organized and how one frame of audio + video is produced. Geno-2 is a single Rust crate (`app-web`) compiled to WebAssembly: a generative music engine, a WebAudio FX graph, and a fullscreen WebGPU shader, wired together by one `requestAnimationFrame` loop. The same engine also drives two headless surfaces — an **offline render** (deterministic WAV export) and **networked control** (a relay broadcasts a performer's parameter changes to display clients) — documented in their own sections below.
 
 ![System overview](diagrams/system-overview.png)
 
@@ -8,7 +8,7 @@
 
 | Layer        | Choice                                  | Notes                                                            |
 | ------------ | --------------------------------------- | --------------------------------------------------------------- |
-| Language     | Rust (edition 2021)                     | 19 modules + 2 WGSL shaders, one crate (`app-web`)       |
+| Language     | Rust (edition 2021)                     | 22 modules + 2 WGSL shaders, one crate (`app-web`)       |
 | GPU          | `wgpu` 24 (WebGPU)                      | Fullscreen waves pass + bloom/composite; no WebGL fallback      |
 | Shaders      | WGSL                                    | `waves.wgsl` (scene), `post.wgsl` (bright-pass, blur, composite) |
 | Audio        | WebAudio via `web-sys`                  | Procedural synthesis + FX graph; no audio samples shipped       |
@@ -16,7 +16,7 @@
 | RNG          | `rand` (`StdRng`) + `getrandom` (`js`)  | Per-voice seeded generators                                     |
 | WASM         | `wasm-bindgen` + `web-sys`              | Canvas, pointer/keyboard events, `requestAnimationFrame`        |
 | Build        | `wasm-pack` (`--target web`)            | Emits `pkg/app_web.js` + `app_web_bg.wasm`, copied into `dist/` |
-| Host         | Cloudflare Workers (`wrangler`)         | `worker.js` serves `dist/` with cache headers                   |
+| Host         | Cloudflare Workers (`wrangler`)         | `worker.js` serves `dist/`; a Room Durable Object relays control |
 
 The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no threads.
 
@@ -26,6 +26,9 @@ The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no threa
 src/
 ├── lib.rs            # Crate root: module wiring; re-exports `start` (the only WASM export)
 ├── wasm_app.rs       # Composition root: build AudioContext + engine + FX + voices + GPU, wire events, start the loop
+├── instrument.rs     # Shared default instrument (voices, tempo, scale, seed) used by realtime + offline
+├── offline.rs        # Headless deterministic render to a 32-bit WAV under an OfflineAudioContext
+├── control.rs        # Exported setters (bpm/detune/root/scale/seed/paused/volume) for networked + display-mode control
 ├── frame.rs          # FrameContext + per-frame update (schedule → swirl → FX → spatialize → render); the rAF driver
 ├── audio.rs          # WebAudio graph: master FX buses (tone, saturation, compressor, reverb, delay), per-voice strips, note trigger
 ├── input.rs          # Input state (mouse, drag, multitouch) + pointer→pixel/uv helpers + multitouch geometry
@@ -49,9 +52,13 @@ src/
 shaders/
 ├── waves.wgsl        # Fullscreen scene: swirl displacement, per-voice influence, ripple propagation
 └── post.wgsl         # Bright-pass, separable blur, ACES tonemap composite, vignette, grain
-index.html            # Canvas + start/hint overlays + WebGPU/Audio error UI
-worker.js             # Cloudflare asset worker: immutable cache for versioned assets, no-cache for the entry
+index.html            # Canvas + start/hint overlays + WebGPU/Audio error UI; ?mode=display bootstrap
+control.html          # Performer panel (/control): tempo, detune, root, scale, seed, master, pause
+offline.html          # Headless harness that drives the offline WAV render
+worker.js             # Cloudflare asset worker (versioned-asset cache) + Room Durable Object relay (/room/<id>)
 scripts/gen-env.js    # Stamps pkg/env.js with the build's git short SHA
+scripts/relay.mjs     # Node dev relay (the Durable Object's logic for local use)
+scripts/render-offline.mjs  # Drives the offline WAV render in headless Chrome
 web-test.js           # Puppeteer smoke test (boot, WebGPU, keyboard, FPS)
 ```
 
@@ -161,6 +168,18 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 - **Release after a carve → drop** — locks in a new root (from drag angle) and mode (from travel/spin), reseeds all voices, and fires an accent burst.
 - **Multitouch** (up to 5 pointers, tracked in `MultiTouchState`): 2-finger pinch→BPM / rotate→detune, 3-finger swipe→root/mode, 4-finger tap→randomize, 5-finger tap→pause.
 
+## Offline Render
+
+`src/offline.rs` renders the instrument deterministically to a 32-bit-float stereo WAV — no canvas, audio device, or user gesture. It drives the same `MusicEngine` event stream through the same WebAudio FX graph as the realtime app, but under an `OfflineAudioContext` rendered far faster than realtime (`scripts/render-offline.mjs` runs it in headless Chrome via `offline.html`). The graph is generic over `BaseAudioContext` so one definition serves both contexts, and `trigger_one_shot` takes an explicit `now` (realtime passes the audio clock; offline passes each note's onset). `src/instrument.rs` factors the default instrument — voices, tempo, scale, seed — so realtime and offline share one definition. A given seed always renders the same piece (runs differ only by sub-perceptual convolution FP noise), ready for mastering.
+
+## Networked Control
+
+The instrument can be driven remotely: a performer panel sends parameter changes over a WebSocket relay to display clients that render locally — *control* crosses the network, not audio or video, and each client renders from the shared state (e.g. a laptop driving an iPad, or an audience rendering locally).
+
+- **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.
+- **Performer panel.** `control.html` (`/control`) sends tempo, detune, root, scale, seed, master volume, and pause.
+- **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`.
+
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, and the JS + wasm + `index.html` + `favicon.svg` are copied into `dist/`.
@@ -172,5 +191,5 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it and shows a message rather than degrading.
 - **No AudioWorklet.** The rAF loop schedules notes ahead on the `AudioContext` clock (the two-clock lookahead — see *How a Frame Is Produced*), so onset timing is sample-accurate without a dedicated audio thread. An AudioWorklet would only be needed for custom per-sample DSP, which the graph does not do.
 - **No 3D scene / object picking.** Audio is spatialized through per-voice panners, but the voices are not interactive on-screen objects — the visuals are a screen-space shader.
-- **No server or persistence.** Everything runs client-side; there is no backend or saved state.
+- **No server in the audio/video path.** The instrument renders and sounds entirely client-side; the only backend, the networked-control relay (a Cloudflare Durable Object), brokers small control messages and persists the room's parameter state — never audio or video (see *Networked Control*).
 - **No threads.** The WASM is single-threaded — no `SharedArrayBuffer`, so no cross-origin-isolation headers are needed.

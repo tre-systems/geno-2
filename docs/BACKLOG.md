@@ -4,7 +4,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 
 ## P1 — correctness & confidence
 
-- **Exercise the render path and audio output in CI.** The browser smoke test runs with `--disable-gpu`, so `navigator.gpu` exposes no adapter, `GpuState` falls back to `None`, and neither the WebGPU render nor real frame timing ever run — the reported "60 fps" is hollow (empty rAF callbacks). Bring up a software WebGPU backend (SwiftShader via `--enable-unsafe-swift-shader`, or lavapipe) so render and true FPS are tested, and add an `AnalyserNode` RMS assertion so CI verifies the graph actually *sounds* (audio is checked today only by the absence of a thrown error). The engine's generative logic is already covered by host tests in `tests/music_tests.rs`. (`web-test.js`, `.github/workflows/ci.yml`)
+- **Exercise render + audio in CI.** Two gaps: (1) the offline render (`src/offline.rs`) produces a deterministic WAV and `scripts/{render-offline,relay-test,display-test,cf-relay-test}.mjs` cover audio + the networked path, but none run in `npm run check`, so CI never executes them — wire them into the gate (and assert the offline WAV's RMS); (2) the browser smoke test runs `--disable-gpu`, so `GpuState` is `None` and the render + real FPS never run (the "60 fps" is hollow) — a software WebGPU backend (SwiftShader via `--enable-unsafe-swift-shader`, or lavapipe) would test it. Generative logic is covered by `tests/music_tests.rs`. (`.github/workflows/ci.yml`, `package.json`, `web-test.js`)
 
 ## P2 — performance & robustness
 

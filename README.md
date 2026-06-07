@@ -56,6 +56,13 @@ Rust + WebAssembly + WebGPU (`wgpu`) + WebAudio, built with `wasm-pack` and serv
 - `4-finger tap`: randomize root + mode + reseed all voices
 - `5-finger tap`: toggle pause/resume
 
+## Networked control & offline render
+
+The same engine runs two more ways (details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#networked-control)):
+
+- **Networked control** — open `/control` (the performer panel) on one device and `/?mode=display` on another; parameter changes broadcast over a Cloudflare Durable Object relay, and every display client renders locally from the shared state. `npm run relay` runs a local relay for development.
+- **Offline render** — `node scripts/render-offline.mjs` renders a seed to a deterministic 32-bit-float WAV under an `OfflineAudioContext`, faster than realtime.
+
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the code is organized and how a frame of audio + video is produced.

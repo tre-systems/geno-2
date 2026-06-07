@@ -1,7 +1,6 @@
-/// Frame smoothing and interaction tuning constants.
-///
-/// These constants express intended behavior (e.g., time constants, clamp
-/// limits) and keep magic numbers out of the code, improving readability.
+//! Tuned constants for frame smoothing, interaction, audio sends, and rendering.
+//!
+//! Values here are hand-tuned; they name the magic numbers used across modules.
 
 // Exponential decay rate for internal pulse energy
 pub const PULSE_ENERGY_DECAY_PER_SEC: f32 = 1.28;
@@ -41,8 +40,6 @@ pub const FX_SAT_DRIVE_MAX: f32 = 1.55;
 pub const FX_SAT_WET_BASE: f32 = 0.14;
 pub const FX_SAT_WET_SPAN: f32 = 0.42;
 
-// Visual build parameters
-
 // Per-voice spatial sends mapping
 pub const DIST_NORM_DIVISOR: f32 = 2.7;
 pub const D_SEND_BASE: f32 = 0.08;
@@ -57,10 +54,7 @@ pub const R_SEND_CLAMP_MAX: f32 = 1.5;
 pub const LEVEL_BASE: f32 = 0.70;
 pub const LEVEL_SPAN: f32 = 0.28;
 
-// Color adjustments
-
-// Camera
-// Z distance used by both picking and audio listener alignment.
+// Camera Z distance, shared by picking and audio-listener alignment.
 pub const CAMERA_Z: f32 = 6.0;
 
 // Post-processing defaults

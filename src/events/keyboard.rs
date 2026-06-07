@@ -14,24 +14,6 @@ thread_local! {
     static MASTER_UNMUTED_GAIN: RefCell<Option<f32>> = RefCell::new(None);
 }
 
-/// Get the name of the current scale for display purposes
-fn get_scale_name(scale: &[f32]) -> &'static str {
-    match scale {
-        s if s == IONIAN => "Ionian (major)",
-        s if s == DORIAN => "Dorian",
-        s if s == PHRYGIAN => "Phrygian",
-        s if s == LYDIAN => "Lydian",
-        s if s == MIXOLYDIAN => "Mixolydian",
-        s if s == AEOLIAN => "Aeolian (minor)",
-        s if s == LOCRIAN => "Locrian",
-        s if s == C_MAJOR_PENTATONIC => "C Major Pentatonic",
-        s if s == TET19_PENTATONIC => "19-TET pentatonic",
-        s if s == TET24_PENTATONIC => "24-TET pentatonic",
-        s if s == TET31_PENTATONIC => "31-TET pentatonic",
-        _ => "Custom",
-    }
-}
-
 /// Update the hint overlay after engine parameter changes
 fn update_hint_after_change(engine: &Rc<RefCell<MusicEngine>>) {
     if let Some(window) = web::window() {
@@ -41,7 +23,7 @@ fn update_hint_after_change(engine: &Rc<RefCell<MusicEngine>>) {
                 (
                     eng.params.detune_cents.get(),
                     eng.params.bpm.get(),
-                    get_scale_name(eng.params.scale),
+                    crate::core::scale_name(eng.params.scale),
                 )
             };
             overlay::update_hint(&document, detune, bpm, scale_name);
@@ -176,19 +158,14 @@ pub fn handle_global_keydown(
                 }
             }
         }
-        _ => {}
-    }
-    match key.as_str() {
         "ArrowUp" => {
             let v = master_gain.gain().value();
-            let nv = (v + 0.05).min(1.0);
-            _ = master_gain.gain().set_value(nv);
+            _ = master_gain.gain().set_value((v + 0.05).min(1.0));
             ev.prevent_default();
         }
         "ArrowDown" => {
             let v = master_gain.gain().value();
-            let nv = (v - 0.05).max(0.0);
-            _ = master_gain.gain().set_value(nv);
+            _ = master_gain.gain().set_value((v - 0.05).max(0.0));
             ev.prevent_default();
         }
         _ => {}

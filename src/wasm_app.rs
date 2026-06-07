@@ -154,162 +154,156 @@ async fn init() -> anyhow::Result<()> {
         .dyn_into::<web::HtmlCanvasElement>()
         .map_err(|e| anyhow::anyhow!(format!("{:?}", e)))?;
 
-    // Note: start overlay is handled below (toggle with 'h') once audio is initialized.
+    // Don't acquire a 2D context: keep the canvas free for WebGPU to claim.
+    // The start overlay is toggled with 'h' once audio is initialized (below).
 
-    // Avoid grabbing a 2D context here to allow WebGPU to acquire the canvas
-
-    // Maintain canvas internal pixel size to match CSS size * devicePixelRatio
+    // Keep the canvas backing size at CSS size * devicePixelRatio.
     wire_canvas_resize(&canvas);
 
-    // Prepare a clone for use inside the click closure
-    let canvas_for_click = canvas.clone();
-
-    // Start audio graph and scheduling + WebGPU renderer immediately; show overlay until OK/close
+    // Initialize audio, scheduling, and the WebGPU renderer exactly once.
     static STARTED: AtomicBool = AtomicBool::new(false);
-    {
-        if STARTED.swap(true, Ordering::SeqCst) == false {
-            let canvas_for_click_inner = canvas_for_click.clone();
-            spawn_local(async move {
-                let InitParts {
-                    audio_ctx,
-                    listener_for_tick,
-                    engine,
-                    paused,
-                } = match build_audio_and_engine(document.clone()).await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        log::error!("audio init error: {:?}", e);
-                        show_audio_error(&document, &format!("{:?}", e));
-                        return;
-                    }
-                };
-
-                wire_overlay_buttons(&audio_ctx, &paused);
-                events::wire_overlay_toggle_h(&document);
-
-                // FX buses
-                let fx = match audio::build_fx_buses(&audio_ctx) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::error!("audio FX graph initialization failed: {e:?}");
-                        show_audio_error(&document, "FX graph initialization failed");
-                        return;
-                    }
-                };
-                let master_gain = fx.master_gain.clone();
-                let sat_pre = fx.sat_pre.clone();
-                let sat_wet = fx.sat_wet.clone();
-                let sat_dry = fx.sat_dry.clone();
-                let reverb_in = fx.reverb_in.clone();
-                let reverb_wet = fx.reverb_wet.clone();
-                let delay_in = fx.delay_in.clone();
-                let delay_feedback = fx.delay_feedback.clone();
-                let delay_wet = fx.delay_wet.clone();
-
-                // Per-voice master gains -> master bus, plus effect sends
-                let initial_positions: Vec<Vec3> =
-                    engine.borrow().voices.iter().map(|v| v.position).collect();
-                let routing = match audio::wire_voices(
-                    &audio_ctx,
-                    &initial_positions,
-                    &master_gain,
-                    &delay_in,
-                    &reverb_in,
-                ) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        log::error!("voice routing initialization failed: {e:?}");
-                        show_audio_error(&document, "voice routing initialization failed");
-                        return;
-                    }
-                };
-                let delay_sends = Rc::new(routing.delay_sends);
-                let reverb_sends = Rc::new(routing.reverb_sends);
-                let voice_panners = routing.voice_panners;
-                let voice_gains = Rc::new(routing.voice_gains);
-
-                // Initialize WebGPU
-                let gpu: Option<render::GpuState> = frame::init_gpu(&canvas_for_click_inner).await;
-
-                // Visual pulses per voice and optional analyser for ambient effects
-                let pulses = Rc::new(RefCell::new(vec![0.0_f32; engine.borrow().voices.len()]));
-                let (analyser, analyser_buf) = audio::create_analyser(&audio_ctx);
-                if let Some(a) = &analyser {
-                    // Tap the master bus so the analyser drives audio-reactive ambient energy.
-                    _ = master_gain.connect_with_audio_node(a);
+    if !STARTED.swap(true, Ordering::SeqCst) {
+        let canvas_for_click = canvas.clone();
+        spawn_local(async move {
+            let InitParts {
+                audio_ctx,
+                listener_for_tick,
+                engine,
+                paused,
+            } = match build_audio_and_engine(document.clone()).await {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("audio init error: {:?}", e);
+                    show_audio_error(&document, &format!("{:?}", e));
+                    return;
                 }
+            };
 
-                // Queued ripple UV from pointer taps (read by render tick)
-                let queued_ripple_uv: Rc<RefCell<Option<input::RippleEvent>>> =
-                    Rc::new(RefCell::new(None));
+            wire_overlay_buttons(&audio_ctx, &paused);
+            events::wire_overlay_toggle_h(&document);
 
-                // ---------------- Interaction state ----------------
-                let mouse_state = Rc::new(RefCell::new(input::MouseState::default()));
-                let drag_state = Rc::new(RefCell::new(input::DragState::default()));
-                let multi_touch = Rc::new(RefCell::new(input::MultiTouchState::default()));
+            // FX buses
+            let fx = match audio::build_fx_buses(&audio_ctx) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::error!("audio FX graph initialization failed: {e:?}");
+                    show_audio_error(&document, "FX graph initialization failed");
+                    return;
+                }
+            };
+            let master_gain = fx.master_gain.clone();
+            let sat_pre = fx.sat_pre.clone();
+            let sat_wet = fx.sat_wet.clone();
+            let sat_dry = fx.sat_dry.clone();
+            let reverb_in = fx.reverb_in.clone();
+            let reverb_wet = fx.reverb_wet.clone();
+            let delay_in = fx.delay_in.clone();
+            let delay_feedback = fx.delay_feedback.clone();
+            let delay_wet = fx.delay_wet.clone();
 
-                // Keyboard controls
-                events::wire_global_keydown(
-                    engine.clone(),
-                    paused.clone(),
-                    master_gain.clone(),
-                    canvas_for_click_inner.clone(),
-                );
+            // Per-voice master gains -> master bus, plus effect sends
+            let initial_positions: Vec<Vec3> =
+                engine.borrow().voices.iter().map(|v| v.position).collect();
+            let routing = match audio::wire_voices(
+                &audio_ctx,
+                &initial_positions,
+                &master_gain,
+                &delay_in,
+                &reverb_in,
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("voice routing initialization failed: {e:?}");
+                    show_audio_error(&document, "voice routing initialization failed");
+                    return;
+                }
+            };
+            let delay_sends = Rc::new(routing.delay_sends);
+            let reverb_sends = Rc::new(routing.reverb_sends);
+            let voice_panners = routing.voice_panners;
+            let voice_gains = Rc::new(routing.voice_gains);
 
-                // Pointer handlers (move/down/up)
-                events::wire_input_handlers(events::InputWiring {
-                    canvas: canvas_for_click_inner.clone(),
-                    engine: engine.clone(),
-                    mouse_state: mouse_state.clone(),
-                    drag_state: drag_state.clone(),
-                    multi_touch: multi_touch.clone(),
-                    paused: paused.clone(),
-                    voice_gains: voice_gains.clone(),
-                    delay_sends: delay_sends.clone(),
-                    reverb_sends: reverb_sends.clone(),
-                    audio_ctx: audio_ctx.clone(),
-                    queued_ripple_uv: queued_ripple_uv.clone(),
-                });
+            // Initialize WebGPU
+            let gpu: Option<render::GpuState> = frame::init_gpu(&canvas_for_click).await;
 
-                // Scheduler + renderer loop driven by requestAnimationFrame
-                let frame_ctx = Rc::new(RefCell::new(frame::FrameContext {
-                    engine: engine.clone(),
-                    paused: paused.clone(),
-                    pulses: pulses.clone(),
-                    canvas: canvas_for_click_inner.clone(),
-                    mouse: mouse_state.clone(),
-                    audio_ctx: audio_ctx.clone(),
-                    listener: listener_for_tick.clone(),
-                    voice_gains: voice_gains.clone(),
-                    delay_sends: delay_sends.clone(),
-                    reverb_sends: reverb_sends.clone(),
-                    voice_panners,
-                    reverb_wet: reverb_wet.clone(),
-                    delay_wet: delay_wet.clone(),
-                    delay_feedback: delay_feedback.clone(),
-                    sat_pre: sat_pre.clone(),
-                    sat_wet: sat_wet.clone(),
-                    sat_dry: sat_dry.clone(),
-                    analyser: analyser.clone(),
-                    analyser_buf: analyser_buf.clone(),
-                    gpu,
-                    queued_ripple_uv: queued_ripple_uv.clone(),
-                    last_instant: Instant::now(),
-                    prev_uv: [0.5, 0.5],
-                    swirl_energy: 0.0,
-                    swirl_pos: [0.5, 0.5],
-                    swirl_vel: [0.0, 0.0],
-                    swirl_initialized: false,
-                    pulse_energy: [0.0, 0.0, 0.0],
-                    visual_voice_positions: initial_positions.clone(),
-                    visual_swirl_strength: 0.0,
-                    audio_visual_energy: 0.0,
-                    last_audio_ripple_time: 0.0,
-                }));
-                // Start RAF loop
-                frame::start_loop(frame_ctx);
+            // Visual pulses per voice and optional analyser for ambient effects
+            let pulses = Rc::new(RefCell::new(vec![0.0_f32; engine.borrow().voices.len()]));
+            let (analyser, analyser_buf) = audio::create_analyser(&audio_ctx);
+            if let Some(a) = &analyser {
+                // Tap the master bus so the analyser drives audio-reactive ambient energy.
+                _ = master_gain.connect_with_audio_node(a);
+            }
+
+            // Queued ripple UV from pointer taps (read by render tick)
+            let queued_ripple_uv: Rc<RefCell<Option<input::RippleEvent>>> =
+                Rc::new(RefCell::new(None));
+
+            // ---------------- Interaction state ----------------
+            let mouse_state = Rc::new(RefCell::new(input::MouseState::default()));
+            let drag_state = Rc::new(RefCell::new(input::DragState::default()));
+            let multi_touch = Rc::new(RefCell::new(input::MultiTouchState::default()));
+
+            // Keyboard controls
+            events::wire_global_keydown(
+                engine.clone(),
+                paused.clone(),
+                master_gain.clone(),
+                canvas_for_click.clone(),
+            );
+
+            // Pointer handlers (move/down/up)
+            events::wire_input_handlers(events::InputWiring {
+                canvas: canvas_for_click.clone(),
+                engine: engine.clone(),
+                mouse_state: mouse_state.clone(),
+                drag_state: drag_state.clone(),
+                multi_touch: multi_touch.clone(),
+                paused: paused.clone(),
+                voice_gains: voice_gains.clone(),
+                delay_sends: delay_sends.clone(),
+                reverb_sends: reverb_sends.clone(),
+                audio_ctx: audio_ctx.clone(),
+                queued_ripple_uv: queued_ripple_uv.clone(),
             });
-        }
+
+            // Scheduler + renderer loop driven by requestAnimationFrame
+            let frame_ctx = Rc::new(RefCell::new(frame::FrameContext {
+                engine: engine.clone(),
+                paused: paused.clone(),
+                pulses: pulses.clone(),
+                canvas: canvas_for_click.clone(),
+                mouse: mouse_state.clone(),
+                audio_ctx: audio_ctx.clone(),
+                listener: listener_for_tick.clone(),
+                voice_gains: voice_gains.clone(),
+                delay_sends: delay_sends.clone(),
+                reverb_sends: reverb_sends.clone(),
+                voice_panners,
+                reverb_wet: reverb_wet.clone(),
+                delay_wet: delay_wet.clone(),
+                delay_feedback: delay_feedback.clone(),
+                sat_pre: sat_pre.clone(),
+                sat_wet: sat_wet.clone(),
+                sat_dry: sat_dry.clone(),
+                analyser: analyser.clone(),
+                analyser_buf: analyser_buf.clone(),
+                gpu,
+                queued_ripple_uv: queued_ripple_uv.clone(),
+                last_instant: Instant::now(),
+                prev_uv: [0.5, 0.5],
+                swirl_energy: 0.0,
+                swirl_pos: [0.5, 0.5],
+                swirl_vel: [0.0, 0.0],
+                swirl_initialized: false,
+                pulse_energy: [0.0, 0.0, 0.0],
+                visual_voice_positions: initial_positions.clone(),
+                visual_swirl_strength: 0.0,
+                audio_visual_energy: 0.0,
+                last_audio_ripple_time: 0.0,
+            }));
+            // Start RAF loop
+            frame::start_loop(frame_ctx);
+        });
     }
 
     Ok(())

@@ -1,6 +1,5 @@
-use wgpu;
-
-pub fn create_color_texture_device(
+/// Creates a 2D color texture (single mip, single sample) and its default view.
+pub fn create_color_texture(
     device: &wgpu::Device,
     label: &str,
     width: u32,
@@ -26,17 +25,7 @@ pub fn create_color_texture_device(
     (tex, view)
 }
 
-pub fn create_color_texture(
-    device: &wgpu::Device,
-    label: &str,
-    width: u32,
-    height: u32,
-    format: wgpu::TextureFormat,
-    usage: wgpu::TextureUsages,
-) -> (wgpu::Texture, wgpu::TextureView) {
-    create_color_texture_device(device, label, width, height, format, usage)
-}
-
+/// Builds a fullscreen-triangle post-processing pipeline for `frag_entry`.
 pub fn make_post_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,

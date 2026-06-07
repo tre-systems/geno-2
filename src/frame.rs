@@ -11,8 +11,6 @@ use wasm_bindgen::JsCast;
 use web_sys as web;
 use web_time::Instant;
 
-use crate::constants::CAMERA_Z;
-
 pub struct FrameContext<'a> {
     pub engine: Rc<RefCell<MusicEngine>>,
     pub paused: Rc<RefCell<bool>>,
@@ -67,207 +65,199 @@ impl<'a> FrameContext<'a> {
             self.engine.borrow_mut().tick(dt, &mut note_events);
         }
 
-        {
-            let pulses_copy: Vec<f32> = {
-                let mut pulses_ref = self.pulses.borrow_mut();
-                let n = pulses_ref.len().min(3);
-                for ev in &note_events {
-                    if ev.voice_index < n {
-                        self.pulse_energy[ev.voice_index] =
-                            (self.pulse_energy[ev.voice_index] + ev.velocity as f32).min(1.8);
-                    }
+        let pulses_copy: Vec<f32> = {
+            let mut pulses_ref = self.pulses.borrow_mut();
+            let n = pulses_ref.len().min(3);
+            for ev in &note_events {
+                if ev.voice_index < n {
+                    self.pulse_energy[ev.voice_index] =
+                        (self.pulse_energy[ev.voice_index] + ev.velocity as f32).min(1.8);
                 }
-                smooth_pulses(&mut pulses_ref, &mut self.pulse_energy, dt_sec);
-                pulses_ref.clone()
-            }; // drop pulses_ref here
-
-            let note_transient = if note_events.is_empty() {
-                0.0
-            } else {
-                let sum: f32 = note_events.iter().map(|ev| ev.velocity as f32).sum();
-                (sum / note_events.len() as f32).clamp(0.0, 1.0)
-            };
-            let pulse_n = pulses_copy.len().min(3).max(1);
-            let pulse_mean =
-                pulses_copy.iter().take(pulse_n).copied().sum::<f32>() / pulse_n as f32;
-
-            // Swirl input and energy (no RefCell borrow active)
-            let (uv, mouse_down, gesture_energy, gesture_flash, gesture_spin) = {
-                let mut ms = self.mouse.borrow_mut();
-                ms.gesture_energy *= (-dt_sec * 1.55).exp();
-                ms.gesture_flash = (ms.gesture_flash - dt_sec * 0.95).max(0.0);
-                ms.gesture_spin *= (-dt_sec * 2.20).exp();
-                (
-                    input::mouse_uv(&self.canvas, &ms),
-                    ms.down,
-                    ms.gesture_energy,
-                    ms.gesture_flash,
-                    ms.gesture_spin.abs(),
-                )
-            };
-            self.update_swirl(uv, dt_sec, mouse_down, gesture_energy, gesture_spin);
-
-            // Global FX modulation
-            apply_global_fx_swirl(
-                &self.reverb_wet,
-                &self.delay_wet,
-                &self.delay_feedback,
-                &self.sat_pre,
-                &self.sat_wet,
-                &self.sat_dry,
-                self.swirl_energy,
-                gesture_flash,
-                uv,
-            );
-
-            // Per-voice audio positioning and sends
-            let voice_positions_snapshot: Vec<Vec3> = {
-                let eng = self.engine.borrow();
-                eng.voices.iter().map(|v| v.position).collect()
-            };
-
-            if self.visual_voice_positions.len() != voice_positions_snapshot.len() {
-                self.visual_voice_positions = voice_positions_snapshot.clone();
             }
-            for i in 0..self.voice_panners.len() {
-                let pos = voice_positions_snapshot[i];
-                self.voice_panners[i].position_x().set_value(pos.x as f32);
-                self.voice_panners[i].position_y().set_value(pos.y as f32);
-                self.voice_panners[i].position_z().set_value(pos.z as f32);
-                let dist = (pos.x * pos.x + pos.z * pos.z).sqrt();
-                let mut d_amt = (D_SEND_BASE + D_SEND_SPAN * pos.x.abs().min(1.0)).clamp(0.0, 1.0);
-                let mut r_amt = (R_SEND_BASE
-                    + R_SEND_SPAN * (dist / DIST_NORM_DIVISOR).clamp(0.0, 1.0))
-                .clamp(0.0, R_SEND_CLAMP_MAX);
-                let boost = 1.0 + SEND_BOOST_COEFF * self.swirl_energy;
-                d_amt = (d_amt * boost).clamp(0.0, D_SEND_CLAMP_MAX);
-                r_amt = (r_amt * boost).clamp(0.0, R_SEND_CLAMP_MAX);
-                self.delay_sends[i].gain().set_value(d_amt);
-                self.reverb_sends[i].gain().set_value(r_amt);
-                let lvl = (LEVEL_BASE
-                    + LEVEL_SPAN * (1.0 - (dist / DIST_NORM_DIVISOR).clamp(0.0, 1.0)))
-                    as f32;
-                self.voice_gains[i].gain().set_value(lvl);
-            }
+            smooth_pulses(&mut pulses_ref, &mut self.pulse_energy, dt_sec);
+            pulses_ref.clone()
+        };
 
-            let mut analyser_avg = 0.0_f32;
-            let mut ambient_hint =
-                (0.22 * self.swirl_energy + 0.48 * gesture_flash + 0.30 * gesture_energy)
-                    .clamp(0.0, 1.0);
+        let note_transient = if note_events.is_empty() {
+            0.0
+        } else {
+            let sum: f32 = note_events.iter().map(|ev| ev.velocity as f32).sum();
+            (sum / note_events.len() as f32).clamp(0.0, 1.0)
+        };
+        let pulse_n = pulses_copy.len().min(3).max(1);
+        let pulse_mean = pulses_copy.iter().take(pulse_n).copied().sum::<f32>() / pulse_n as f32;
 
-            // Optional analyser-driven ambient energy
-            if let Some(a) = &self.analyser {
-                let bins = a.frequency_bin_count() as usize;
-                {
-                    let mut buf = self.analyser_buf.borrow_mut();
-                    if buf.len() != bins {
-                        buf.resize(bins, 0.0);
-                    }
-                    a.get_float_frequency_data(&mut buf);
-                }
-                let mut sum = 0.0f32;
-                let take = (bins.min(16)) as u32;
-                for i in 0..take {
-                    let v = self.analyser_buf.borrow()[i as usize];
-                    let lin = ((v + 100.0) / 100.0).clamp(0.0, 1.0);
-                    sum += lin;
-                }
-                let avg = sum / take as f32;
-                let n = pulses_copy.len().min(3);
-                {
-                    // update both self.pulses and local copy
-                    let mut pulses_ref = self.pulses.borrow_mut();
-                    for i in 0..n {
-                        pulses_ref[i] = (pulses_ref[i] + avg * 0.05).min(1.5);
-                    }
-                }
-                analyser_avg = avg;
-                ambient_hint = (avg * 0.74 + 0.26 * ambient_hint).clamp(0.0, 1.0);
-            }
+        // Swirl input and energy (no RefCell borrow active)
+        let (uv, mouse_down, gesture_energy, gesture_flash, gesture_spin) = {
+            let mut ms = self.mouse.borrow_mut();
+            ms.gesture_energy *= (-dt_sec * 1.55).exp();
+            ms.gesture_flash = (ms.gesture_flash - dt_sec * 0.95).max(0.0);
+            ms.gesture_spin *= (-dt_sec * 2.20).exp();
+            (
+                input::mouse_uv(&self.canvas, &ms),
+                ms.down,
+                ms.gesture_energy,
+                ms.gesture_flash,
+                ms.gesture_spin.abs(),
+            )
+        };
+        self.update_swirl(uv, dt_sec, mouse_down, gesture_energy, gesture_spin);
 
-            let audio_visual_target =
-                (0.44 * pulse_mean + 0.34 * note_transient + 0.22 * analyser_avg).clamp(0.0, 1.2);
-            self.audio_visual_energy =
-                smooth_towards(self.audio_visual_energy, audio_visual_target, dt_sec, 0.15);
+        // Global FX modulation
+        apply_global_fx_swirl(
+            &self.reverb_wet,
+            &self.delay_wet,
+            &self.delay_feedback,
+            &self.sat_pre,
+            &self.sat_wet,
+            &self.sat_dry,
+            self.swirl_energy,
+            gesture_flash,
+            uv,
+        );
 
-            ambient_hint =
-                (0.44 * ambient_hint + 0.34 * self.audio_visual_energy + 0.22 * note_transient)
-                    .clamp(0.0, 1.0);
+        // Per-voice audio positioning and sends
+        let voice_positions_snapshot: Vec<Vec3> = {
+            let eng = self.engine.borrow();
+            eng.voices.iter().map(|v| v.position).collect()
+        };
 
-            if note_transient > 0.48
-                && self.audio_visual_energy > 0.35
-                && (audio_time - self.last_audio_ripple_time) > 0.13
+        if self.visual_voice_positions.len() != voice_positions_snapshot.len() {
+            self.visual_voice_positions = voice_positions_snapshot.clone();
+        }
+        for i in 0..self.voice_panners.len() {
+            let pos = voice_positions_snapshot[i];
+            self.voice_panners[i].position_x().set_value(pos.x as f32);
+            self.voice_panners[i].position_y().set_value(pos.y as f32);
+            self.voice_panners[i].position_z().set_value(pos.z as f32);
+            let dist = (pos.x * pos.x + pos.z * pos.z).sqrt();
+            let mut d_amt = (D_SEND_BASE + D_SEND_SPAN * pos.x.abs().min(1.0)).clamp(0.0, 1.0);
+            let mut r_amt = (R_SEND_BASE
+                + R_SEND_SPAN * (dist / DIST_NORM_DIVISOR).clamp(0.0, 1.0))
+            .clamp(0.0, R_SEND_CLAMP_MAX);
+            let boost = 1.0 + SEND_BOOST_COEFF * self.swirl_energy;
+            d_amt = (d_amt * boost).clamp(0.0, D_SEND_CLAMP_MAX);
+            r_amt = (r_amt * boost).clamp(0.0, R_SEND_CLAMP_MAX);
+            self.delay_sends[i].gain().set_value(d_amt);
+            self.reverb_sends[i].gain().set_value(r_amt);
+            let lvl = (LEVEL_BASE + LEVEL_SPAN * (1.0 - (dist / DIST_NORM_DIVISOR).clamp(0.0, 1.0)))
+                as f32;
+            self.voice_gains[i].gain().set_value(lvl);
+        }
+
+        let mut analyser_avg = 0.0_f32;
+        let mut ambient_hint =
+            (0.22 * self.swirl_energy + 0.48 * gesture_flash + 0.30 * gesture_energy)
+                .clamp(0.0, 1.0);
+
+        // Optional analyser-driven ambient energy
+        if let Some(a) = &self.analyser {
+            let bins = a.frequency_bin_count() as usize;
             {
-                let queue_empty = self.queued_ripple_uv.borrow().is_none();
-                if queue_empty {
-                    self.last_audio_ripple_time = audio_time;
-                    *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                        uv: self.swirl_pos,
-                        amp: (0.48 + 0.78 * note_transient + 0.36 * self.audio_visual_energy)
-                            .clamp(0.4, 1.5),
-                    });
+                let mut buf = self.analyser_buf.borrow_mut();
+                if buf.len() != bins {
+                    buf.resize(bins, 0.0);
+                }
+                a.get_float_frequency_data(&mut buf);
+            }
+            let mut sum = 0.0f32;
+            let take = (bins.min(16)) as u32;
+            for i in 0..take {
+                let v = self.analyser_buf.borrow()[i as usize];
+                let lin = ((v + 100.0) / 100.0).clamp(0.0, 1.0);
+                sum += lin;
+            }
+            let avg = sum / take as f32;
+            let n = pulses_copy.len().min(3);
+            {
+                // Feed the analyser energy back into the shared pulse buffer.
+                let mut pulses_ref = self.pulses.borrow_mut();
+                for i in 0..n {
+                    pulses_ref[i] = (pulses_ref[i] + avg * 0.05).min(1.5);
                 }
             }
+            analyser_avg = avg;
+            ambient_hint = (avg * 0.74 + 0.26 * ambient_hint).clamp(0.0, 1.0);
+        }
 
-            let voice_step_limit =
-                ((0.70 + 0.95 * self.audio_visual_energy + 0.40 * self.swirl_energy) * dt_sec)
-                    .max(0.010);
-            for i in 0..self.visual_voice_positions.len() {
-                self.visual_voice_positions[i] = slew_towards_vec3(
-                    self.visual_voice_positions[i],
-                    voice_positions_snapshot[i],
-                    voice_step_limit,
-                );
+        let audio_visual_target =
+            (0.44 * pulse_mean + 0.34 * note_transient + 0.22 * analyser_avg).clamp(0.0, 1.2);
+        self.audio_visual_energy =
+            smooth_towards(self.audio_visual_energy, audio_visual_target, dt_sec, 0.15);
+
+        ambient_hint =
+            (0.44 * ambient_hint + 0.34 * self.audio_visual_energy + 0.22 * note_transient)
+                .clamp(0.0, 1.0);
+
+        if note_transient > 0.48
+            && self.audio_visual_energy > 0.35
+            && (audio_time - self.last_audio_ripple_time) > 0.13
+        {
+            let queue_empty = self.queued_ripple_uv.borrow().is_none();
+            if queue_empty {
+                self.last_audio_ripple_time = audio_time;
+                *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
+                    uv: self.swirl_pos,
+                    amp: (0.48 + 0.78 * note_transient + 0.36 * self.audio_visual_energy)
+                        .clamp(0.4, 1.5),
+                });
             }
+        }
 
-            // Voice positions are now only used for audio spatialization and wave displacement
+        let voice_step_limit =
+            ((0.70 + 0.95 * self.audio_visual_energy + 0.40 * self.swirl_energy) * dt_sec)
+                .max(0.010);
+        for i in 0..self.visual_voice_positions.len() {
+            self.visual_voice_positions[i] = slew_towards_vec3(
+                self.visual_voice_positions[i],
+                voice_positions_snapshot[i],
+                voice_step_limit,
+            );
+        }
 
-            // Camera + listener
-            let cam_eye = Vec3::new(0.0, 0.0, CAMERA_Z);
-            let cam_target = Vec3::ZERO;
-            update_listener_to_camera(&self.listener, cam_eye, cam_target);
+        // Camera + listener
+        let cam_eye = Vec3::new(0.0, 0.0, CAMERA_Z);
+        let cam_target = Vec3::ZERO;
+        update_listener_to_camera(&self.listener, cam_eye, cam_target);
 
-            if let Some(g) = &mut self.gpu {
-                g.set_camera(cam_eye, cam_target);
-                g.set_ambient_clear(ambient_hint);
-                if let Some(ripple) = self.queued_ripple_uv.borrow_mut().take() {
-                    g.set_ripple(ripple.uv, ripple.amp);
-                }
-                let speed_norm = ((self.swirl_vel[0] * self.swirl_vel[0]
-                    + self.swirl_vel[1] * self.swirl_vel[1])
-                    .sqrt()
-                    / 1.0)
-                    .clamp(0.0, 1.0);
-                let target_strength = (0.16
-                    + 0.62 * self.swirl_energy
-                    + 0.26 * speed_norm
-                    + 0.60 * gesture_energy
-                    + 0.34 * gesture_flash
-                    + 0.42 * self.audio_visual_energy
-                    + 0.18 * note_transient)
-                    .clamp(0.0, 2.4);
-                let smoothed_strength =
-                    smooth_towards(self.visual_swirl_strength, target_strength, dt_sec, 0.17);
-                self.visual_swirl_strength = slew_towards_scalar(
-                    self.visual_swirl_strength,
-                    smoothed_strength,
-                    (1.05 + 1.25 * self.audio_visual_energy) * dt_sec,
-                )
+        if let Some(g) = &mut self.gpu {
+            g.set_camera(cam_eye, cam_target);
+            g.set_ambient_clear(ambient_hint);
+            if let Some(ripple) = self.queued_ripple_uv.borrow_mut().take() {
+                g.set_ripple(ripple.uv, ripple.amp);
+            }
+            let speed_norm = ((self.swirl_vel[0] * self.swirl_vel[0]
+                + self.swirl_vel[1] * self.swirl_vel[1])
+                .sqrt()
+                / 1.0)
+                .clamp(0.0, 1.0);
+            let target_strength = (0.16
+                + 0.62 * self.swirl_energy
+                + 0.26 * speed_norm
+                + 0.60 * gesture_energy
+                + 0.34 * gesture_flash
+                + 0.42 * self.audio_visual_energy
+                + 0.18 * note_transient)
                 .clamp(0.0, 2.4);
-                g.set_swirl(self.swirl_pos, self.visual_swirl_strength, true);
-                let w = self.canvas.width();
-                let h = self.canvas.height();
-                g.resize_if_needed(w, h);
-                let pulse_energy_snapshot: Vec<f32> = {
-                    let pulses_ref = self.pulses.borrow();
-                    pulses_ref.clone()
-                };
+            let smoothed_strength =
+                smooth_towards(self.visual_swirl_strength, target_strength, dt_sec, 0.17);
+            self.visual_swirl_strength = slew_towards_scalar(
+                self.visual_swirl_strength,
+                smoothed_strength,
+                (1.05 + 1.25 * self.audio_visual_energy) * dt_sec,
+            )
+            .clamp(0.0, 2.4);
+            g.set_swirl(self.swirl_pos, self.visual_swirl_strength, true);
+            let w = self.canvas.width();
+            let h = self.canvas.height();
+            g.resize_if_needed(w, h);
+            let pulse_energy_snapshot: Vec<f32> = {
+                let pulses_ref = self.pulses.borrow();
+                pulses_ref.clone()
+            };
 
-                if let Err(e) =
-                    g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot)
-                {
-                    log::error!("render error: {:?}", e);
-                }
+            if let Err(e) = g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot) {
+                log::error!("render error: {:?}", e);
             }
         }
 
@@ -292,9 +282,7 @@ impl<'a> FrameContext<'a> {
             }
         }
     }
-}
 
-impl<'a> FrameContext<'a> {
     fn update_swirl(
         &mut self,
         uv: [f32; 2],

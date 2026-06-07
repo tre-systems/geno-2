@@ -67,6 +67,29 @@ pub fn wire_input_handlers(w: InputWiring) {
     wire_pointercancel(&w);
 }
 
+impl InputWiring {
+    /// Raise the visual gesture energy/flash to at least the given floors.
+    fn bump_gesture(&self, energy: f32, flash: f32) {
+        let mut ms = self.mouse_state.borrow_mut();
+        ms.gesture_energy = ms.gesture_energy.max(energy);
+        ms.gesture_flash = ms.gesture_flash.max(flash);
+    }
+
+    /// Queue a surface ripple at the given UV with the given amplitude,
+    /// replacing any ripple not yet consumed by the render loop.
+    fn queue_ripple(&self, uv: [f32; 2], amp: f32) {
+        *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent { uv, amp });
+    }
+
+    /// Move the tracked cursor to a UV position expressed in canvas pixels,
+    /// so single-pointer visuals follow a multitouch centroid or midpoint.
+    fn set_mouse_uv(&self, uv: [f32; 2], w_px: f32, h_px: f32) {
+        let mut ms = self.mouse_state.borrow_mut();
+        ms.x = uv[0] * w_px;
+        ms.y = uv[1] * h_px;
+    }
+}
+
 // ─────────────────────────── pointermove ───────────────────────────
 
 fn wire_pointermove(w: &InputWiring) {
@@ -114,9 +137,7 @@ fn wire_pointermove(w: &InputWiring) {
             TouchGestureKind::FourFingerTap | TouchGestureKind::FiveFingerTap => {
                 // Visual feedback only; action already committed on pointerdown
                 if let Some(c_uv) = w.multi_touch.borrow().centroid_uv(w_px, h_px) {
-                    let mut ms = w.mouse_state.borrow_mut();
-                    ms.x = c_uv[0] * w_px;
-                    ms.y = c_uv[1] * h_px;
+                    w.set_mouse_uv(c_uv, w_px, h_px);
                 }
                 ev.prevent_default();
                 return;
@@ -191,13 +212,8 @@ fn wire_pointermove(w: &InputWiring) {
         if drag_just_started {
             log::info!("[gesture] carve begin");
             let [uvx, uvy] = input::pointer_canvas_uv(&ev, &w.canvas);
-            *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                uv: [uvx, uvy],
-                amp: 1.35,
-            });
-            let mut ms = w.mouse_state.borrow_mut();
-            ms.gesture_energy = ms.gesture_energy.max(0.55);
-            ms.gesture_flash = ms.gesture_flash.max(0.24);
+            w.queue_ripple([uvx, uvy], 1.35);
+            w.bump_gesture(0.55, 0.24);
         }
 
         if !drag_active {
@@ -234,10 +250,8 @@ fn wire_pointermove(w: &InputWiring) {
             let mut ds = w.drag_state.borrow_mut();
             if ds.active && ds.travel_px - ds.last_ripple_travel >= RIPPLE_INTERVAL_PX {
                 ds.last_ripple_travel = ds.travel_px;
-                *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                    uv: [uvx, uvy],
-                    amp: (1.05 + 1.35 * motion + 0.65 * travel_n).clamp(0.6, 2.4),
-                });
+                let amp = (1.05 + 1.35 * motion + 0.65 * travel_n).clamp(0.6, 2.4);
+                w.queue_ripple([uvx, uvy], amp);
             }
         }
 
@@ -339,9 +353,7 @@ fn handle_two_finger_move(w: &InputWiring, w_px: f32, h_px: f32) {
     }
 
     if let Some(mid_uv) = w.multi_touch.borrow().midpoint_uv(w_px, h_px) {
-        let mut ms = w.mouse_state.borrow_mut();
-        ms.x = mid_uv[0] * w_px;
-        ms.y = mid_uv[1] * h_px;
+        w.set_mouse_uv(mid_uv, w_px, h_px);
     }
 
     if let Some(window) = web::window() {
@@ -408,10 +420,7 @@ fn wire_pointerdown(w: &InputWiring) {
             }
 
             let [uvx, uvy] = input::pointer_canvas_uv(&ev, &w.canvas);
-            *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                uv: [uvx, uvy],
-                amp: 1.15,
-            });
+            w.queue_ripple([uvx, uvy], 1.15);
         }
 
         _ = w.canvas.set_pointer_capture(pid);
@@ -484,13 +493,9 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
             let mt = w.multi_touch.borrow();
 
             // Strong visual burst
-            {
-                let mut ms = w.mouse_state.borrow_mut();
-                ms.gesture_energy = ms.gesture_energy.max(1.2);
-                ms.gesture_flash = ms.gesture_flash.max(1.0);
-            }
+            w.bump_gesture(1.2, 1.0);
             if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-                *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent { uv: c_uv, amp: 2.2 });
+                w.queue_ripple(c_uv, 2.2);
             }
             return;
         }
@@ -506,13 +511,9 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
             }
 
             // Visual burst
-            {
-                let mut ms = w.mouse_state.borrow_mut();
-                ms.gesture_energy = ms.gesture_energy.max(0.85);
-                ms.gesture_flash = ms.gesture_flash.max(0.75);
-            }
+            w.bump_gesture(0.85, 0.75);
             if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-                *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent { uv: c_uv, amp: 1.8 });
+                w.queue_ripple(c_uv, 1.8);
             }
             return;
         }
@@ -520,16 +521,9 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
     }
 
     // Visual feedback for any multitouch start
-    {
-        let mut ms = w.mouse_state.borrow_mut();
-        ms.gesture_energy = ms.gesture_energy.max(0.55);
-        ms.gesture_flash = ms.gesture_flash.max(0.30);
-    }
+    w.bump_gesture(0.55, 0.30);
     if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-        *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-            uv: c_uv,
-            amp: 1.45,
-        });
+        w.queue_ripple(c_uv, 1.45);
     }
 }
 
@@ -585,13 +579,9 @@ fn wire_pointerup(w: &InputWiring) {
             // remaining pointer(s) don't keep being treated as part of that gesture.
             {
                 let mut mt = w.multi_touch.borrow_mut();
-                let needs_reset = match mt.gesture_kind {
-                    TouchGestureKind::TwoFingerPinchRotate => mt.pointers.len() < 2,
-                    TouchGestureKind::ThreeFingerSwipe => mt.pointers.len() < 3,
-                    TouchGestureKind::FourFingerTap => mt.pointers.len() < 4,
-                    TouchGestureKind::FiveFingerTap => mt.pointers.len() < 5,
-                    TouchGestureKind::None => false,
-                };
+                let count = mt.pointers.len();
+                let needs_reset =
+                    gesture_min_pointers(mt.gesture_kind).is_some_and(|min| count < min);
                 if needs_reset {
                     mt.reset_gesture();
                 }
@@ -718,10 +708,8 @@ fn wire_pointerup(w: &InputWiring) {
                 }
             }
 
-            *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                uv: [uvx, uvy],
-                amp: (1.40 + 0.95 * motion_n + 0.70 * travel_n).clamp(0.8, 2.8),
-            });
+            let amp = (1.40 + 0.95 * motion_n + 0.70 * travel_n).clamp(0.8, 2.8);
+            w.queue_ripple([uvx, uvy], amp);
 
             {
                 let mut ms = w.mouse_state.borrow_mut();
@@ -762,10 +750,7 @@ fn wire_pointerup(w: &InputWiring) {
                 );
             }
 
-            *w.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent {
-                uv: [uvx, uvy],
-                amp: 1.95,
-            });
+            w.queue_ripple([uvx, uvy], 1.95);
             {
                 let mut ms = w.mouse_state.borrow_mut();
                 ms.gesture_energy = ms.gesture_energy.max(0.62);
@@ -850,11 +835,7 @@ fn handle_three_finger_release(w: InputWiring, initial_centroid: [f32; 2], final
     update_hint_from_engine(&w);
 
     // Visual burst
-    {
-        let mut ms = w.mouse_state.borrow_mut();
-        ms.gesture_energy = ms.gesture_energy.max(0.85);
-        ms.gesture_flash = ms.gesture_flash.max(0.65);
-    }
+    w.bump_gesture(0.85, 0.65);
 }
 
 // ─────────────────────────── pointercancel ───────────────────────────
@@ -868,13 +849,9 @@ fn wire_pointercancel(w: &InputWiring) {
         {
             let mut mt = w.multi_touch.borrow_mut();
             mt.pointers.remove(&pid);
-            let needs_reset = match mt.gesture_kind {
-                TouchGestureKind::TwoFingerPinchRotate => mt.pointers.len() < 2,
-                TouchGestureKind::ThreeFingerSwipe => mt.pointers.len() < 3,
-                TouchGestureKind::FourFingerTap => mt.pointers.len() < 4,
-                TouchGestureKind::FiveFingerTap => mt.pointers.len() < 5,
-                TouchGestureKind::None => mt.pointers.is_empty(),
-            };
+            let count = mt.pointers.len();
+            let needs_reset =
+                gesture_min_pointers(mt.gesture_kind).map_or(count == 0, |min| count < min);
             if needs_reset {
                 mt.reset_gesture();
             }
@@ -903,7 +880,7 @@ fn update_hint_from_engine(w: &InputWiring) {
     if let Some(window) = web::window() {
         if let Some(document) = window.document() {
             let eng = w.engine.borrow();
-            let scale_name = scale_name(eng.params.scale);
+            let scale_name = crate::core::scale_name(eng.params.scale);
             overlay::update_hint(
                 &document,
                 eng.params.detune_cents.get(),
@@ -915,31 +892,19 @@ fn update_hint_from_engine(w: &InputWiring) {
     }
 }
 
-fn mode_for_vertical_band(band: usize) -> (&'static [f32], &'static str) {
-    match band {
-        0 => (IONIAN, "Ionian (major)"),
-        1 => (DORIAN, "Dorian"),
-        2 => (PHRYGIAN, "Phrygian"),
-        3 => (LYDIAN, "Lydian"),
-        4 => (MIXOLYDIAN, "Mixolydian"),
-        5 => (AEOLIAN, "Aeolian (minor)"),
-        _ => (LOCRIAN, "Locrian"),
+/// Minimum simultaneous pointers a multitouch gesture needs to stay active,
+/// or `None` for [`TouchGestureKind::None`] (which has no finger requirement).
+fn gesture_min_pointers(kind: TouchGestureKind) -> Option<usize> {
+    match kind {
+        TouchGestureKind::TwoFingerPinchRotate => Some(2),
+        TouchGestureKind::ThreeFingerSwipe => Some(3),
+        TouchGestureKind::FourFingerTap => Some(4),
+        TouchGestureKind::FiveFingerTap => Some(5),
+        TouchGestureKind::None => None,
     }
 }
 
-fn scale_name(scale: &[f32]) -> &'static str {
-    match scale {
-        s if s == IONIAN => "Ionian (major)",
-        s if s == DORIAN => "Dorian",
-        s if s == PHRYGIAN => "Phrygian",
-        s if s == LYDIAN => "Lydian",
-        s if s == MIXOLYDIAN => "Mixolydian",
-        s if s == AEOLIAN => "Aeolian (minor)",
-        s if s == LOCRIAN => "Locrian",
-        s if s == C_MAJOR_PENTATONIC => "C Major Pentatonic",
-        s if s == TET19_PENTATONIC => "19-TET pentatonic",
-        s if s == TET24_PENTATONIC => "24-TET pentatonic",
-        s if s == TET31_PENTATONIC => "31-TET pentatonic",
-        _ => "Custom",
-    }
+fn mode_for_vertical_band(band: usize) -> (&'static [f32], &'static str) {
+    let idx = band.min(MODES_ORDER.len() - 1);
+    (MODES_ORDER[idx], MODE_NAMES[idx])
 }

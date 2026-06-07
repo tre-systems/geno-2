@@ -81,7 +81,7 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
 
     var p = (uv - 0.5) * vec2<f32>(aspect, 1.0);
 
-    // Pointer-driven shear before kaleidoscope fold.
+    // Pointer-driven swirl (distance-decaying rotation + radial pull) before the kaleidoscope fold.
     let swirl_center = (u.swirl_uv - 0.5) * vec2<f32>(aspect, 1.0);
     let dv_swirl = p - swirl_center;
     let swirl_r = length(dv_swirl);

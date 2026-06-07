@@ -23,6 +23,19 @@ pub struct VoiceRouting {
     pub reverb_sends: Vec<web::GainNode>,
 }
 
+// Tag a Web Audio constructor result with a human-readable label for error reporting.
+fn named<T>(result: Result<T, wasm_bindgen::JsValue>, label: &str) -> anyhow::Result<T> {
+    result.map_err(|e| anyhow::anyhow!("{label}: {e:?}"))
+}
+
+fn osc_type(waveform: Waveform) -> web::OscillatorType {
+    match waveform {
+        Waveform::Sine => web::OscillatorType::Sine,
+        Waveform::Saw => web::OscillatorType::Sawtooth,
+        Waveform::Triangle => web::OscillatorType::Triangle,
+    }
+}
+
 fn create_gain(
     audio_ctx: &web::AudioContext,
     value: f32,
@@ -41,8 +54,7 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
     // Subtle master saturation (arctan) with wet/dry mix
     let sat_pre = create_gain(audio_ctx, 0.54, "sat pre")?;
     #[allow(deprecated)]
-    let saturator = web::WaveShaperNode::new(audio_ctx)
-        .map_err(|e| anyhow::anyhow!("WaveShaperNode: {e:?}"))?;
+    let saturator = named(web::WaveShaperNode::new(audio_ctx), "WaveShaperNode")?;
     // Build arctan curve
     let curve_len: u32 = 2048;
     let drive: f32 = 0.92;
@@ -57,21 +69,27 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
     let sat_dry = create_gain(audio_ctx, 0.84, "sat dry")?;
 
     // Global tone shaping before saturation blend.
-    let master_hp = web::BiquadFilterNode::new(audio_ctx)
-        .map_err(|e| anyhow::anyhow!("Master highpass filter: {e:?}"))?;
+    let master_hp = named(
+        web::BiquadFilterNode::new(audio_ctx),
+        "Master highpass filter",
+    )?;
     master_hp.set_type(web::BiquadFilterType::Highpass);
     master_hp.frequency().set_value(95.0);
     master_hp.q().set_value(0.70);
 
-    let master_lp = web::BiquadFilterNode::new(audio_ctx)
-        .map_err(|e| anyhow::anyhow!("Master lowpass filter: {e:?}"))?;
+    let master_lp = named(
+        web::BiquadFilterNode::new(audio_ctx),
+        "Master lowpass filter",
+    )?;
     master_lp.set_type(web::BiquadFilterType::Lowpass);
     master_lp.frequency().set_value(4600.0);
     master_lp.q().set_value(0.45);
 
     // Gentle master compression + makeup keeps baseline louder while taming peaks.
-    let master_comp = web::DynamicsCompressorNode::new(audio_ctx)
-        .map_err(|e| anyhow::anyhow!("DynamicsCompressorNode: {e:?}"))?;
+    let master_comp = named(
+        web::DynamicsCompressorNode::new(audio_ctx),
+        "DynamicsCompressorNode",
+    )?;
     master_comp.threshold().set_value(-22.0);
     master_comp.knee().set_value(18.0);
     master_comp.ratio().set_value(2.9);
@@ -93,8 +111,7 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
 
     // Reverb bus (short glass chamber IR)
     let reverb_in = create_gain(audio_ctx, 1.0, "Reverb in")?;
-    let reverb =
-        web::ConvolverNode::new(audio_ctx).map_err(|e| anyhow::anyhow!("ConvolverNode: {e:?}"))?;
+    let reverb = named(web::ConvolverNode::new(audio_ctx), "ConvolverNode")?;
     reverb.set_normalize(true);
     // Create a short bright impulse response procedurally
     {
@@ -102,26 +119,21 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
         let seconds = 3.8_f32;
         let len = (sr as f32 * seconds) as u32;
         if let Ok(ir) = audio_ctx.create_buffer(2, len, sr) {
-            // simple xorshift32 for deterministic noise
-            let mut seed_l: u32 = 0x1234ABCD;
-            let mut seed_r: u32 = 0x7890FEDC;
+            let dt = 1.0_f32 / sr as f32;
             for ch in 0..2 {
                 let mut buf: Vec<f32> = vec![0.0; len as usize];
                 let mut t = 0.0_f32;
-                let dt = 1.0_f32 / sr as f32;
-                for i in 0..len as usize {
-                    let s = if ch == 0 { &mut seed_l } else { &mut seed_r };
-                    let mut x = *s;
-                    x ^= x << 13;
-                    x ^= x >> 17;
-                    x ^= x << 5;
-                    *s = x;
-                    let n = ((x as f32 / std::u32::MAX as f32) * 2.0 - 1.0) as f32;
+                // Per-channel xorshift32 state for deterministic noise.
+                let mut seed: u32 = if ch == 0 { 0x1234ABCD } else { 0x7890FEDC };
+                for sample in buf.iter_mut() {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 17;
+                    seed ^= seed << 5;
+                    let n = (seed as f32 / std::u32::MAX as f32) * 2.0 - 1.0;
                     // Faster decay with soft early emphasis
                     let decay = (-t / 1.60).exp();
                     let early = (1.0 - (t / 0.36)).clamp(0.0, 1.0);
-                    let v = n * decay * (0.38 + 0.62 * early);
-                    buf[i] = v;
+                    *sample = n * decay * (0.38 + 0.62 * early);
                     t += dt;
                 }
                 _ = ir.copy_to_channel(&mut buf, ch as i32);
@@ -136,12 +148,9 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
 
     // Delay bus with feedback loop and band-limited tone
     let delay_in = create_gain(audio_ctx, 1.0, "Delay in")?;
-    let delay = audio_ctx
-        .create_delay_with_max_delay_time(3.0)
-        .map_err(|e| anyhow::anyhow!("DelayNode: {e:?}"))?;
+    let delay = named(audio_ctx.create_delay_with_max_delay_time(3.0), "DelayNode")?;
     delay.delay_time().set_value(0.38);
-    let delay_tone = web::BiquadFilterNode::new(audio_ctx)
-        .map_err(|e| anyhow::anyhow!("Delay tone filter: {e:?}"))?;
+    let delay_tone = named(web::BiquadFilterNode::new(audio_ctx), "Delay tone filter")?;
     delay_tone.set_type(web::BiquadFilterType::Lowpass);
     delay_tone.frequency().set_value(2450.0);
     delay_tone.q().set_value(0.72);
@@ -185,23 +194,14 @@ pub fn trigger_one_shot(
     };
     let src_chorus = web::OscillatorNode::new(audio_ctx).ok();
 
-    match waveform {
-        Waveform::Sine => src_main.set_type(web::OscillatorType::Sine),
-        Waveform::Saw => src_main.set_type(web::OscillatorType::Sawtooth),
-        Waveform::Triangle => src_main.set_type(web::OscillatorType::Triangle),
-    }
+    src_main.set_type(osc_type(waveform));
     if let Some(chorus) = &src_chorus {
-        match waveform {
-            Waveform::Sine => chorus.set_type(web::OscillatorType::Sine),
-            Waveform::Saw => chorus.set_type(web::OscillatorType::Sawtooth),
-            Waveform::Triangle => chorus.set_type(web::OscillatorType::Triangle),
-        }
+        chorus.set_type(osc_type(waveform));
     }
 
     if let Ok(g) = web::GainNode::new(audio_ctx) {
         g.gain().set_value(0.0);
-        let now = audio_ctx.current_time();
-        let t0 = now + 0.005;
+        let t0 = audio_ctx.current_time() + 0.005;
         let (glide_mul, glide_time, chorus_detune) = match waveform {
             Waveform::Saw => (1.05, 0.14, 9.0),
             Waveform::Triangle => (0.97, 0.18, -7.0),
@@ -275,11 +275,9 @@ pub fn create_analyser(
     audio_ctx: &web::AudioContext,
 ) -> (Option<web::AnalyserNode>, Rc<RefCell<Vec<f32>>>) {
     let analyser: Option<web::AnalyserNode> = web::AnalyserNode::new(audio_ctx).ok();
-    if let Some(a) = &analyser {
-        a.set_fft_size(256);
-    }
     let buf: Rc<RefCell<Vec<f32>>> = Rc::new(RefCell::new(Vec::new()));
     if let Some(a) = &analyser {
+        a.set_fft_size(256);
         let bins = a.frequency_bin_count() as usize;
         buf.borrow_mut().resize(bins, 0.0);
     }
@@ -296,12 +294,11 @@ pub fn wire_voices(
 ) -> anyhow::Result<VoiceRouting> {
     let mut voice_gains: Vec<web::GainNode> = Vec::new();
     let mut voice_panners: Vec<web::PannerNode> = Vec::new();
-    let mut delay_sends_vec: Vec<web::GainNode> = Vec::new();
-    let mut reverb_sends_vec: Vec<web::GainNode> = Vec::new();
+    let mut delay_sends: Vec<web::GainNode> = Vec::new();
+    let mut reverb_sends: Vec<web::GainNode> = Vec::new();
 
     for pos in initial_positions.iter() {
-        let panner =
-            web::PannerNode::new(audio_ctx).map_err(|e| anyhow::anyhow!("PannerNode: {e:?}"))?;
+        let panner = named(web::PannerNode::new(audio_ctx), "PannerNode")?;
         panner.set_panning_model(web::PanningModelType::Hrtf);
         panner.set_distance_model(web::DistanceModelType::Inverse);
         panner.set_ref_distance(0.5);
@@ -316,11 +313,11 @@ pub fn wire_voices(
 
         let d_send = create_gain(audio_ctx, 0.22, "Delay send")?;
         _ = d_send.connect_with_audio_node(delay_in);
-        delay_sends_vec.push(d_send);
+        delay_sends.push(d_send);
 
         let r_send = create_gain(audio_ctx, 0.30, "Reverb send")?;
         _ = r_send.connect_with_audio_node(reverb_in);
-        reverb_sends_vec.push(r_send);
+        reverb_sends.push(r_send);
 
         voice_gains.push(gain);
         voice_panners.push(panner);
@@ -329,10 +326,7 @@ pub fn wire_voices(
     Ok(VoiceRouting {
         voice_gains,
         voice_panners,
-        delay_sends: delay_sends_vec,
-        reverb_sends: reverb_sends_vec,
+        delay_sends,
+        reverb_sends,
     })
 }
-
-// Public create_gain used across modules
-// (no-op) use the Result-returning `create_gain` defined above for internal wiring

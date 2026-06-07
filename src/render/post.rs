@@ -1,5 +1,4 @@
 use crate::constants;
-use wgpu;
 
 pub(crate) struct PostResources {
     pub(crate) bgl0: wgpu::BindGroupLayout, // tex+sampler+uniform

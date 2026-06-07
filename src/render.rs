@@ -5,8 +5,8 @@ mod helpers;
 mod post;
 mod targets;
 mod waves;
-use targets::RenderTargets;
 
+use targets::RenderTargets;
 use waves::{create_waves_resources, VoicePacked, WavesResources, WavesUniforms};
 
 #[repr(C)]
@@ -30,20 +30,16 @@ pub struct GpuState<'a> {
     config: wgpu::SurfaceConfiguration,
     // Waves full-screen layer
     waves: WavesResources,
-    // Post-processing resources
+    // Offscreen HDR scene + bloom ping-pong targets
     targets: RenderTargets,
     linear_sampler: wgpu::Sampler,
-
+    // Post-processing pipelines, layouts, and uniform buffer
     post: post::PostResources,
-    // Bind groups for different sources
+    // Bind groups selecting the source texture for each post pass
     bg_hdr: wgpu::BindGroup,
     bg_from_bloom_a: wgpu::BindGroup,
     bg_from_bloom_b: wgpu::BindGroup,
     bg_bloom_a_only: wgpu::BindGroup, // group1 for composite, sampling bloom A
-
-    bright_pipeline: wgpu::RenderPipeline,
-    blur_pipeline: wgpu::RenderPipeline,
-    composite_pipeline: wgpu::RenderPipeline,
 
     width: u32,
     height: u32,
@@ -132,7 +128,7 @@ impl<'a> GpuState<'a> {
 
         // Offscreen HDR targets (scene and bloom) at full and half resolution
         let hdr_format = wgpu::TextureFormat::Rgba16Float;
-        let (hdr_tex, hdr_view) = helpers::create_color_texture_device(
+        let (hdr_tex, hdr_view) = helpers::create_color_texture(
             &device,
             "hdr_tex",
             width,
@@ -143,7 +139,7 @@ impl<'a> GpuState<'a> {
         let bloom_w = (width.max(1) / 2).max(1);
         let bloom_h = (height.max(1) / 2).max(1);
         let bloom_format = wgpu::TextureFormat::Rgba16Float;
-        let (bloom_a, bloom_a_view) = helpers::create_color_texture_device(
+        let (bloom_a, bloom_a_view) = helpers::create_color_texture(
             &device,
             "bloom_a",
             bloom_w,
@@ -151,7 +147,7 @@ impl<'a> GpuState<'a> {
             bloom_format,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         );
-        let (bloom_b, bloom_b_view) = helpers::create_color_texture_device(
+        let (bloom_b, bloom_b_view) = helpers::create_color_texture(
             &device,
             "bloom_b",
             bloom_w,
@@ -179,77 +175,22 @@ impl<'a> GpuState<'a> {
             ..Default::default()
         });
         let post = post::create_post_resources(&device, &post_shader, bloom_format, format);
-        let bg_hdr = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_hdr"),
-            layout: &post.bgl0,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&hdr_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: post.uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        let bg_from_bloom_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_from_bloom_a"),
-            layout: &post.bgl0,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bloom_a_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: post.uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        let bg_from_bloom_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_from_bloom_b"),
-            layout: &post.bgl0,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bloom_b_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: post.uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        let bg_bloom_a_only = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_bloom_a_only"),
-            layout: &post.bgl1,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bloom_a_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-            ],
-        });
-        let bright_pipeline = post.bright_pipeline.clone();
-        let blur_pipeline = post.blur_pipeline.clone();
-        let composite_pipeline = post.composite_pipeline.clone();
+        let targets = RenderTargets::new(
+            hdr_tex,
+            hdr_view,
+            bloom_a,
+            bloom_a_view,
+            bloom_b,
+            bloom_b_view,
+        );
+        let (bg_hdr, bg_from_a, bg_from_b, bg_a_only) = post::rebuild_bind_groups(
+            &device,
+            &post,
+            &linear_sampler,
+            &targets.hdr_view,
+            &targets.bloom_a_view,
+            &targets.bloom_b_view,
+        );
 
         Ok(Self {
             surface,
@@ -257,23 +198,13 @@ impl<'a> GpuState<'a> {
             queue,
             config,
             waves,
-            targets: RenderTargets::new(
-                hdr_tex,
-                hdr_view,
-                bloom_a,
-                bloom_a_view,
-                bloom_b,
-                bloom_b_view,
-            ),
+            targets,
             linear_sampler,
             post,
             bg_hdr,
-            bg_from_bloom_a,
-            bg_from_bloom_b,
-            bg_bloom_a_only,
-            bright_pipeline,
-            blur_pipeline,
-            composite_pipeline,
+            bg_from_bloom_a: bg_from_a,
+            bg_from_bloom_b: bg_from_b,
+            bg_bloom_a_only: bg_a_only,
             width,
             height,
             clear_color: wgpu::Color {
@@ -442,7 +373,7 @@ impl<'a> GpuState<'a> {
             "bright_pass",
             &self.targets.bloom_a_view,
             wgpu::Color::BLACK,
-            &self.bright_pipeline,
+            &self.post.bright_pipeline,
             &self.bg_hdr,
             None,
         );
@@ -461,7 +392,7 @@ impl<'a> GpuState<'a> {
             "blur_h",
             &self.targets.bloom_b_view,
             wgpu::Color::BLACK,
-            &self.blur_pipeline,
+            &self.post.blur_pipeline,
             &self.bg_from_bloom_a,
             None,
         );
@@ -480,7 +411,7 @@ impl<'a> GpuState<'a> {
             "blur_v",
             &self.targets.bloom_a_view,
             wgpu::Color::BLACK,
-            &self.blur_pipeline,
+            &self.post.blur_pipeline,
             &self.bg_from_bloom_b,
             None,
         );
@@ -499,7 +430,7 @@ impl<'a> GpuState<'a> {
             "composite",
             &view,
             self.clear_color,
-            &self.composite_pipeline,
+            &self.post.composite_pipeline,
             &self.bg_hdr,
             Some(&self.bg_bloom_a_only),
         );
@@ -508,9 +439,7 @@ impl<'a> GpuState<'a> {
         frame.present();
         Ok(())
     }
-}
 
-impl<'a> GpuState<'a> {
     fn rebuild_post_bind_groups(&mut self) {
         let (bg_hdr, bg_from_a, bg_from_b, bg_a_only) = post::rebuild_bind_groups(
             &self.device,

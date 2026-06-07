@@ -72,34 +72,30 @@ pub enum Waveform {
 }
 
 /// Static configuration for a voice used at engine construction time.
-///
-/// Fields:
-/// - `waveform`: oscillator type to synthesize this voice in the web frontend
-/// - `base_position`: initial engine-space position (XZ plane; Y is typically 0)
-/// - `trigger_probability`: chance (0.0-1.0) that this voice triggers on each grid step
-/// - `octave_offset`: octave adjustment relative to root note (-2 to +2)
-/// - `base_duration`: base note duration in seconds
 #[derive(Clone, Debug)]
 pub struct VoiceConfig {
+    /// Oscillator type to synthesize this voice in the web frontend.
     pub waveform: Waveform,
+    /// Initial engine-space position (XZ plane; Y is typically 0).
     pub base_position: Vec3,
+    /// Chance (0.0-1.0) that this voice triggers on each grid step.
     pub trigger_probability: f32,
+    /// Octave adjustment relative to the root note (-2 to +2).
     pub octave_offset: i32,
+    /// Base note duration in seconds.
     pub base_duration: f32,
 }
 
 /// A scheduled musical event produced by the engine for playback.
-///
-/// Fields:
-/// - `voice_index`: which voice this event belongs to (index into `voices`)
-/// - `frequency_hz`: target pitch in Hertz (already converted from MIDI)
-/// - `velocity`: normalized loudness 0..1 (mapped to gain envelope)
-/// - `duration_sec`: nominal duration in seconds (envelope length)
 #[derive(Clone, Debug, Default)]
 pub struct NoteEvent {
+    /// Which voice this event belongs to (index into `voices`).
     pub voice_index: usize,
+    /// Target pitch in Hertz (already converted from MIDI).
     pub frequency_hz: Frequency,
+    /// Normalized loudness 0..1 (mapped to the gain envelope).
     pub velocity: f32,
+    /// Nominal duration in seconds (envelope length).
     pub duration_sec: f32,
 }
 
@@ -110,16 +106,15 @@ pub struct VoiceState {
 }
 
 /// Global engine parameters controlling tempo and scale.
-///
-/// - `bpm` controls the tempo of the scheduler (beats per minute)
-/// - `scale` is the allowed pitch degree set, expressed as semitone offsets
-/// - `root_midi` is the MIDI note number of the tonal center (e.g., 60 for C4)
-/// - `detune_cents` is the global detune offset in cents (-200 to +200)
 #[derive(Clone, Debug)]
 pub struct EngineParams {
+    /// Scheduler tempo in beats per minute.
     pub bpm: Bpm,
+    /// Allowed pitch degree set, expressed as semitone offsets.
     pub scale: &'static [f32],
+    /// MIDI note number of the tonal center (e.g. 60 for C4).
     pub root_midi: i32,
+    /// Global detune offset in cents (-200 to +200).
     pub detune_cents: Cents,
 }
 
@@ -154,6 +149,24 @@ pub const LOCRIAN: &[f32] = &[0.0, 1.0, 3.0, 5.0, 6.0, 8.0, 10.0, 12.0];
 pub const TET19_PENTATONIC: &[f32] = &[0.0, 1.8947, 3.7895, 6.9474, 8.8421, 12.0]; // 19-EDO steps 0,3,6,11,14
 pub const TET24_PENTATONIC: &[f32] = &[0.0, 2.5, 5.0, 7.5, 10.0, 12.0];
 pub const TET31_PENTATONIC: &[f32] = &[0.0, 1.9355, 3.871, 6.9677, 8.9032, 12.0]; // 31-EDO steps 0,5,10,18,23
+
+/// Human-readable name for a scale, matched by identity against the scale consts.
+pub fn scale_name(scale: &[f32]) -> &'static str {
+    match scale {
+        s if s == IONIAN => "Ionian (major)",
+        s if s == DORIAN => "Dorian",
+        s if s == PHRYGIAN => "Phrygian",
+        s if s == LYDIAN => "Lydian",
+        s if s == MIXOLYDIAN => "Mixolydian",
+        s if s == AEOLIAN => "Aeolian (minor)",
+        s if s == LOCRIAN => "Locrian",
+        s if s == C_MAJOR_PENTATONIC => "C Major Pentatonic",
+        s if s == TET19_PENTATONIC => "19-TET pentatonic",
+        s if s == TET24_PENTATONIC => "24-TET pentatonic",
+        s if s == TET31_PENTATONIC => "31-TET pentatonic",
+        _ => "Custom",
+    }
+}
 
 /// Random generative scheduler producing `NoteEvent`s on an eighth-note grid.
 ///
@@ -253,7 +266,6 @@ impl MusicEngine {
         // throttled) doesn't dump a flood of notes when the loop resumes.
         self.beat_accum = self.beat_accum.min(step * MAX_CATCHUP_STEPS);
         while self.beat_accum >= step {
-            // eighth notes grid
             self.beat_accum -= step;
             self.schedule_step(out_events);
         }
@@ -269,14 +281,24 @@ impl MusicEngine {
         for (i, voice) in self.voices.iter().enumerate() {
             let rng = &mut self.rngs[i];
             let scale = self.params.scale;
-            if scale.is_empty() {
+            let scale_len = scale.len();
+            if scale_len == 0 {
                 continue;
             }
-            let scale_len = scale.len();
-            let single_tone_scale = scale_len == 1;
+            let octave12 = (self.configs[i].octave_offset * 12) as f32;
+            let root_midi = self.params.root_midi as f32;
 
-            let gate = if single_tone_scale {
-                1.0
+            // A single-degree scale is the degenerate "drone" case: every step plays
+            // that one pitch, so the polymeter/accent/contour layers are bypassed.
+            let (gate, accent, midi);
+            if scale_len == 1 {
+                gate = 1.0;
+                accent = 0.0;
+                let prob = self.configs[i].trigger_probability.clamp(0.0, 1.0);
+                if rng.gen::<f32>() >= prob {
+                    continue;
+                }
+                midi = root_midi + scale[0] + octave12;
             } else {
                 let (steps, hits, rotate) = polymeter_for_voice(i);
                 let hard_gate = euclidean_gate(step, steps, hits, rotate);
@@ -287,83 +309,37 @@ impl MusicEngine {
                             + voice.position.x * 1.3
                             + voice.position.z * 0.9)
                             .cos();
-                (0.62 * hard_gate + 0.24 * swing + 0.14 * travel).clamp(0.0, 1.0)
-            };
-            let accent = if single_tone_scale {
-                0.0
-            } else {
-                accent_gate(step, i)
-            };
-            let prob = if single_tone_scale {
-                self.configs[i].trigger_probability.clamp(0.0, 1.0)
-            } else {
-                (self.configs[i].trigger_probability * (0.16 + 0.76 * gate)
+                gate = (0.62 * hard_gate + 0.24 * swing + 0.14 * travel).clamp(0.0, 1.0);
+                accent = accent_gate(step, i);
+                let prob = (self.configs[i].trigger_probability * (0.16 + 0.76 * gate)
                     + 0.10 * accent
                     + 0.08 * (phrase_idx as f32 / PHRASE_ROOT_SHIFTS.len() as f32))
-                    .clamp(0.02, 0.98)
-            };
-            if rng.gen::<f32>() >= prob {
-                continue;
-            }
+                    .clamp(0.02, 0.98);
+                if rng.gen::<f32>() >= prob {
+                    continue;
+                }
 
-            let degree = if single_tone_scale {
-                scale[0]
-            } else {
                 let motif = motif_for_voice(i, step);
                 let stride = (i as i32 * 2) + 1;
                 let phase = (step as i32 * stride) + motif + phrase_idx as i32;
-                let mut scale_pos = phase % scale_len as i32;
-                if scale_pos < 0 {
-                    scale_pos += scale_len as i32;
-                }
-                let mut deg = scale[scale_pos as usize];
+                let scale_pos = phase.rem_euclid(scale_len as i32);
+                let mut degree = scale[scale_pos as usize];
                 if accent > 0.84 && rng.gen::<f32>() < 0.24 {
-                    deg += 12.0;
+                    degree += 12.0;
                 }
-                deg
-            };
 
-            let root_shift = if single_tone_scale { 0.0 } else { phrase_shift };
-            let contour = if single_tone_scale {
-                0.0
-            } else {
-                0.42 * (step as f32 * (0.14 + i as f32 * 0.04)).sin()
-            };
-            let register = if single_tone_scale {
-                0.0
-            } else {
-                match i {
-                    0 => {
-                        if gate > 0.78 {
-                            -12.0
-                        } else {
-                            -24.0
-                        }
-                    }
+                let contour = 0.42 * (step as f32 * (0.14 + i as f32 * 0.04)).sin();
+                let register = match i {
+                    0 if gate > 0.78 => -12.0,
+                    0 => -24.0,
                     1 => 0.0,
-                    _ => {
-                        if gate > 0.72 {
-                            12.0
-                        } else {
-                            24.0
-                        }
-                    }
-                }
-            };
-
-            let octave = self.configs[i].octave_offset;
-            let micro_drift = if single_tone_scale {
-                0.0
-            } else {
-                (rng.gen::<f32>() - 0.5) * 0.14
-            };
-            let midi = self.params.root_midi as f32
-                + root_shift
-                + degree
-                + contour
-                + register
-                + (octave * 12) as f32
-                + micro_drift;
+                    _ if gate > 0.72 => 12.0,
+                    _ => 24.0,
+                };
+                let micro_drift = (rng.gen::<f32>() - 0.5) * 0.14;
+                midi =
+                    root_midi + phrase_shift + degree + contour + register + octave12 + micro_drift;
+            }
             let freq = MidiNote(midi).to_freq(self.params.detune_cents);
 
             let (vel_base, vel_span, dur_scale, staccato) = match i {

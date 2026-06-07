@@ -60,6 +60,12 @@ It keeps the Geno stack, but shifts into a different artistic direction: shoegaz
 - `4-finger tap`: randomize root + mode + reseed all voices
 - `5-finger tap`: toggle pause/resume
 
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the code is organized and how a frame of audio + video is produced.
+- [docs/diagrams/](docs/diagrams/) — system overview, frame loop, and audio graph.
+- [docs/BACKLOG.md](docs/BACKLOG.md) — ordered next work and known issues.
+
 ## Local Development
 
 Requirements:

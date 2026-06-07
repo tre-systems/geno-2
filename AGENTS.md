@@ -2,6 +2,8 @@
 
 This file is intentionally tool-neutral and should be usable by both GPT Codex and Claude Code.
 
+Read before substantial work: [`README.md`](README.md) (features + controls), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how the code is organized and how a frame is produced), and [`docs/BACKLOG.md`](docs/BACKLOG.md) (next work + known issues).
+
 ## Mission
 
 - Keep the current stack: Rust + WebAssembly + WebGPU + WebAudio + Node tooling.
@@ -36,6 +38,7 @@ Expected checks include:
 - `cargo fmt --check`
 - `cargo clippy -D warnings`
 - `cargo test`
+- Diagram render check (`npm run check:diagrams`)
 - Web build + Puppeteer smoke test (`web-test.js`)
 
 ## Audio/Visual Direction
@@ -53,10 +56,12 @@ Expected checks include:
 ## Documentation
 
 - Update docs only when behavior, controls, architecture, or deployment expectations changed.
+- Docs describe the current state in the present tense; keep history in git, not in docs.
 - Typical targets:
   - `README.md`
-  - `docs/SPEC.md` (when architecture/intent changed)
-  - `docs/TODO.md` (when priorities changed)
+  - `docs/ARCHITECTURE.md` (when architecture/intent changed)
+  - `docs/BACKLOG.md` (when priorities changed)
+  - `docs/diagrams/*.dot` — re-render with `npm run diagrams` after editing
 
 ## Git Workflow
 

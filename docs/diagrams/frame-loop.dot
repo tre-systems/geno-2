@@ -1,0 +1,87 @@
+digraph FrameLoop {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.50",
+    ranksep="0.62",
+    splines=polyline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>Frame Loop — one requestAnimationFrame</B></FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.22,0.13",
+    width=3.5,
+    height=0.66,
+    fontname="Avenir",
+    fontsize=17,
+    penwidth=2.3,
+    fontcolor="#14213d",
+    color="#22865a",
+    fillcolor="#eaf8ef:#ffffff",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=13,
+    fontcolor="#3d4a5c",
+    penwidth=2.2,
+    arrowsize=0.78
+  ];
+
+  START [label=<<B>rAF tick</B><BR/><FONT POINT-SIZE="14">FrameContext::frame(dt)</FONT>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+
+  PAUSED [label=<<B>paused?</B>>, shape=diamond, style="filled", fillcolor="#ffffff", color="#3d4a5c", width=1.5, height=1.0, fontsize=15];
+
+  TICK [label=<<B>schedule</B><BR/><FONT POINT-SIZE="14">MusicEngine::tick → NoteEvents</FONT>>];
+
+  // ---- couple state ----
+  PULSE [label=<<B>smooth pulses</B><BR/><FONT POINT-SIZE="14">per-voice energy; decay gesture energy</FONT>>];
+  SWIRL [label=<<B>update swirl</B><BR/><FONT POINT-SIZE="14">damped spring from pointer / centroid</FONT>>];
+  FXMOD [label=<<B>modulate FX</B><BR/><FONT POINT-SIZE="14">reverb · delay · saturation</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  SPAT [label=<<B>spatialize voices</B><BR/><FONT POINT-SIZE="14">positions → panners + sends + level</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  LISTENER [label=<<B>align listener</B><BR/><FONT POINT-SIZE="14">AudioListener → fixed camera</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+
+  // ---- render ----
+  subgraph cluster_render {
+    graph [
+      label=<<FONT POINT-SIZE="15" COLOR="#5f3b8a"><B>RENDER (GpuState)</B></FONT>>,
+      labelloc=t, labeljust=l,
+      color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=18
+    ];
+    WAVES [label=<<B>waves pass</B><BR/><FONT POINT-SIZE="14">swirl · voices · ripples → HDR</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    BLOOM [label=<<B>bloom</B><BR/><FONT POINT-SIZE="14">bright-pass · blur H · blur V</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    COMPOSITE [label=<<B>composite + present</B><BR/><FONT POINT-SIZE="14">ACES · vignette · grain → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    WAVES -> BLOOM -> COMPOSITE;
+  }
+
+  TRIGGER [label=<<B>trigger voices</B><BR/><FONT POINT-SIZE="14">one-shot oscillator per NoteEvent</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+
+  NEXT [label=<<B>schedule next frame</B>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+
+  // ---- flow ----
+  START -> PAUSED;
+  PAUSED -> TICK [label="running"];
+  PAUSED -> PULSE [label="paused (skip)", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  TICK -> PULSE;
+  PULSE -> SWIRL -> FXMOD -> SPAT -> LISTENER;
+  LISTENER -> WAVES [lhead=cluster_render];
+  COMPOSITE -> TRIGGER [ltail=cluster_render, label="if running", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  TRIGGER -> NEXT;
+  NEXT -> START [label="next rAF", constraint=false, color="#6b7280", fontcolor="#6b7280", style=dashed];
+}

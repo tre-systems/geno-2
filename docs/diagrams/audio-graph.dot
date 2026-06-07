@@ -1,0 +1,108 @@
+digraph AudioGraph {
+  graph [
+    rankdir=LR,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.40",
+    ranksep="0.80",
+    splines=spline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>Audio Graph — WebAudio Topology</B></FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.20,0.12",
+    height=0.62,
+    fontname="Avenir",
+    fontsize=16,
+    penwidth=2.3,
+    fontcolor="#14213d",
+    color="#d39a00",
+    fillcolor="#fff4d1:#fffaf0",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=12,
+    fontcolor="#3d4a5c",
+    penwidth=2.0,
+    arrowsize=0.74
+  ];
+
+  // ---- Generation (Rust) ----
+  ENG [label=<<B>MusicEngine</B><BR/><FONT POINT-SIZE="13">eighth-note scheduler</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  NOTE [label=<<B>NoteEvent</B><BR/><FONT POINT-SIZE="13">voice · freq · velocity · dur</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+
+  // ---- Per-note synthesis ----
+  subgraph cluster_note {
+    graph [label=<<FONT POINT-SIZE="14" COLOR="#a5610a"><B>PER NOTE</B></FONT>>, labelloc=t, labeljust=l, color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.6, margin=16];
+    OSC [label=<<B>OscillatorNode ×2</B><BR/><FONT POINT-SIZE="13">waveform + detuned chorus</FONT>>];
+    ENV [label=<<B>env GainNode</B><BR/><FONT POINT-SIZE="13">attack · sustain · release</FONT>>];
+  }
+
+  // ---- Per-voice strip ----
+  subgraph cluster_voice {
+    graph [label=<<FONT POINT-SIZE="14" COLOR="#a5610a"><B>PER VOICE</B></FONT>>, labelloc=t, labeljust=l, color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.6, margin=16];
+    VG [label=<<B>Voice Gain</B>>];
+    PAN [label=<<B>PannerNode</B><BR/><FONT POINT-SIZE="13">HRTF · inverse distance</FONT>>];
+    VG -> PAN;
+  }
+
+  // ---- Reverb bus ----
+  subgraph cluster_reverb {
+    graph [label=<<FONT POINT-SIZE="14" COLOR="#a5610a"><B>REVERB BUS</B></FONT>>, labelloc=t, labeljust=l, color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.6, margin=16];
+    RIN [label=<<B>reverb_in</B>>];
+    CONV [label=<<B>ConvolverNode</B><BR/><FONT POINT-SIZE="13">procedural impulse</FONT>>];
+    RWET [label=<<B>reverb_wet</B>>];
+    RIN -> CONV -> RWET;
+  }
+
+  // ---- Delay bus ----
+  subgraph cluster_delay {
+    graph [label=<<FONT POINT-SIZE="14" COLOR="#a5610a"><B>DELAY BUS</B></FONT>>, labelloc=t, labeljust=l, color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.6, margin=16];
+    DIN [label=<<B>delay_in</B>>];
+    DLY [label=<<B>DelayNode</B>>];
+    DTONE [label=<<B>lowpass tone</B>>];
+    DWET [label=<<B>delay_wet</B>>];
+    DIN -> DLY -> DTONE -> DWET;
+    DTONE -> DLY [label="feedback", color="#a5610a", fontcolor="#a5610a", constraint=false];
+  }
+
+  // ---- Master chain ----
+  subgraph cluster_master {
+    graph [label=<<FONT POINT-SIZE="14" COLOR="#5f3b8a"><B>MASTER</B></FONT>>, labelloc=t, labeljust=l, color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.6, margin=16];
+    MASTER [label=<<B>master_gain</B><BR/><FONT POINT-SIZE="13">sum bus</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    TONE [label=<<B>highpass → lowpass</B><BR/><FONT POINT-SIZE="13">tone shaping</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    SAT [label=<<B>WaveShaper</B><BR/><FONT POINT-SIZE="13">arctan · wet/dry</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    COMP [label=<<B>Compressor + makeup</B>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    MASTER -> TONE -> SAT -> COMP;
+  }
+
+  DEST [label=<<B>destination</B><BR/><FONT POINT-SIZE="13">speakers</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+
+  // ---- Signal flow ----
+  ENG -> NOTE;
+  NOTE -> OSC [lhead=cluster_note];
+  OSC -> ENV;
+  ENV -> VG [lhead=cluster_voice, label="voice"];
+  ENV -> DIN [lhead=cluster_delay, label="delay send", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  ENV -> RIN [lhead=cluster_reverb, label="reverb send", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  PAN -> MASTER [ltail=cluster_voice];
+  RWET -> MASTER [ltail=cluster_reverb];
+  DWET -> MASTER [ltail=cluster_delay];
+  COMP -> DEST [ltail=cluster_master];
+}

@@ -50,7 +50,7 @@ shaders/
 ├── waves.wgsl        # Fullscreen scene: swirl displacement, per-voice influence, ripple propagation
 └── post.wgsl         # Bright-pass, separable blur, ACES tonemap composite, vignette, grain
 index.html            # Canvas + start/hint overlays + WebGPU/Audio error UI
-worker.js             # Cloudflare asset worker (cache headers per extension)
+worker.js             # Cloudflare asset worker: immutable cache for versioned assets, no-cache for the entry
 scripts/gen-env.js    # Stamps pkg/env.js with the build's git short SHA
 web-test.js           # Puppeteer smoke test (boot, WebGPU, keyboard, FPS)
 ```
@@ -161,7 +161,7 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, and the JS + wasm + `index.html` + `favicon.svg` are copied into `dist/`.
-- `worker.js` serves `dist/` as Cloudflare Worker static assets, setting `Cache-Control` per file type (long for wasm, short for HTML) so a deploy always revalidates the entry HTML.
+- `worker.js` runs before asset serving (`run_worker_first`) and sets `Cache-Control`: the JS glue and wasm — both loaded with a `?v=<git-sha>` tag (`index.html` versions the wasm URL too) — are `immutable`, while the `env.js` version pointer and the HTML entry are `no-cache`, so a deploy is picked up immediately while the heavy assets cache forever.
 - `npm run dev` runs `wrangler dev` locally; `npx wrangler deploy` ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR and deploys to Cloudflare on `main` when the Cloudflare secrets are present.
 
 ## What This Architecture Deliberately Does Not Include

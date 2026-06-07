@@ -516,7 +516,8 @@
           "[index] wasm entry loaded url:",
           new URL(`./pkg/app_web.js?v=${v}`, window.location.href).toString()
         );
-        return m.default();
+        // Version the wasm URL too so each deploy's wasm can be cached immutably (see worker.js).
+        return m.default({ module_or_path: `./pkg/app_web_bg.wasm?v=${v}` });
       });
     </script>
   </body>

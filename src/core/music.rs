@@ -2,6 +2,66 @@ use glam::Vec3;
 use rand::prelude::*;
 use std::time::Duration;
 
+/// Tempo in beats per minute, clamped to the scheduler's supported range.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bpm(f32);
+
+impl Bpm {
+    pub const MIN: f32 = 1.0;
+    pub const MAX: f32 = 400.0;
+
+    /// Construct from a raw value, clamping to `[MIN, MAX]`; non-finite becomes `MIN`.
+    pub fn new(value: f32) -> Self {
+        Self(if value.is_finite() {
+            value.clamp(Self::MIN, Self::MAX)
+        } else {
+            Self::MIN
+        })
+    }
+
+    pub fn get(self) -> f32 {
+        self.0
+    }
+}
+
+/// Microtonal detune offset in cents, clamped to ±200 (±2 semitones).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Cents(f32);
+
+impl Cents {
+    pub const LIMIT: f32 = 200.0;
+
+    /// Construct from a raw value, clamping to `[-LIMIT, LIMIT]`.
+    pub fn new(value: f32) -> Self {
+        Self(value.clamp(-Self::LIMIT, Self::LIMIT))
+    }
+
+    pub fn get(self) -> f32 {
+        self.0
+    }
+}
+
+/// A (possibly fractional) MIDI note number; A4 = 69.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MidiNote(pub f32);
+
+impl MidiNote {
+    /// Convert to a frequency, applying a detune offset (A4 = 440 Hz).
+    pub fn to_freq(self, detune: Cents) -> Frequency {
+        Frequency(midi_to_hz_with_detune(self.0, detune.get()))
+    }
+}
+
+/// A pitch in Hertz.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Frequency(pub f32);
+
+impl Frequency {
+    pub fn hz(self) -> f32 {
+        self.0
+    }
+}
+
 /// Basic oscillator shape used by synths in the web front-end.
 #[derive(Clone, Copy, Debug)]
 pub enum Waveform {
@@ -39,7 +99,7 @@ pub struct VoiceConfig {
 #[derive(Clone, Debug, Default)]
 pub struct NoteEvent {
     pub voice_index: usize,
-    pub frequency_hz: f32,
+    pub frequency_hz: Frequency,
     pub velocity: f32,
     pub duration_sec: f32,
 }
@@ -58,19 +118,19 @@ pub struct VoiceState {
 /// - `detune_cents` is the global detune offset in cents (-200 to +200)
 #[derive(Clone, Debug)]
 pub struct EngineParams {
-    pub bpm: f32,
+    pub bpm: Bpm,
     pub scale: &'static [f32],
     pub root_midi: i32,
-    pub detune_cents: f32,
+    pub detune_cents: Cents,
 }
 
 impl Default for EngineParams {
     fn default() -> Self {
         Self {
-            bpm: 92.0,
+            bpm: Bpm::new(92.0),
             scale: DORIAN,
             root_midi: 62, // D4
-            detune_cents: 0.0,
+            detune_cents: Cents::default(),
         }
     }
 }
@@ -144,30 +204,24 @@ impl MusicEngine {
         }
     }
 
-    /// Set beats-per-minute for the internal scheduler.
-    pub fn set_bpm(&mut self, bpm: f32) {
-        if !bpm.is_finite() {
-            return;
-        }
-        self.params.bpm = bpm.clamp(1.0, 400.0);
+    /// Set the scheduler tempo. The `Bpm` newtype has already validated the value.
+    pub fn set_bpm(&mut self, bpm: Bpm) {
+        self.params.bpm = bpm;
     }
 
-    /// Set the global detune offset in cents.
-    /// Range: -200 to +200 cents (±2 semitones)
-    pub fn set_detune_cents(&mut self, detune_cents: f32) {
-        self.params.detune_cents = detune_cents.clamp(-200.0, 200.0);
+    /// Set the global detune offset. The `Cents` newtype has already clamped it to ±200.
+    pub fn set_detune_cents(&mut self, detune: Cents) {
+        self.params.detune_cents = detune;
     }
 
-    /// Adjust the global detune offset by the specified amount in cents.
-    /// The result is clamped to the valid range of -200 to +200 cents.
-    pub fn adjust_detune_cents(&mut self, delta_cents: f32) {
-        let new_detune = self.params.detune_cents + delta_cents;
-        self.set_detune_cents(new_detune);
+    /// Adjust the global detune offset by a delta; the result is re-clamped to ±200 cents.
+    pub fn adjust_detune_cents(&mut self, delta: Cents) {
+        self.params.detune_cents = Cents::new(self.params.detune_cents.get() + delta.get());
     }
 
     /// Reset the global detune offset to 0 cents (no detune).
     pub fn reset_detune(&mut self) {
-        self.params.detune_cents = 0.0;
+        self.params.detune_cents = Cents::default();
     }
 
     /// Update the engine-space position of a voice.
@@ -187,7 +241,7 @@ impl MusicEngine {
 
     /// Advance the scheduler by `dt`, pushing any newly scheduled `NoteEvent`s into `out_events`.
     pub fn tick(&mut self, dt: Duration, out_events: &mut Vec<NoteEvent>) {
-        let bpm = self.params.bpm as f64;
+        let bpm = self.params.bpm.get() as f64;
         if !bpm.is_finite() || bpm <= 0.0 {
             return;
         }
@@ -308,7 +362,7 @@ impl MusicEngine {
                 + register
                 + (octave * 12) as f32
                 + micro_drift;
-            let freq = midi_to_hz_with_detune(midi, self.params.detune_cents);
+            let freq = MidiNote(midi).to_freq(self.params.detune_cents);
 
             let (vel_base, vel_span, dur_scale, staccato) = match i {
                 0 => (0.48, 0.34, 1.45, 0.28),

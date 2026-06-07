@@ -71,6 +71,8 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **POD uniforms mirrored Rust ↔ WGSL, guarded at compile time.** `WavesUniforms`, `VoicePacked`, and `PostUniforms` are `#[repr(C)]` + `bytemuck::Pod`, byte-compatible with their WGSL `struct` counterparts, so they `bytes_of` straight into uniform buffers with no serialization. The Rust and WGSL definitions are one contract and change together — a `const _: () = assert!(size_of::<…>() == N)` next to each struct fails the build if a field is added or reordered without updating the matching shader.
 
+**Typed domain values.** Tempo, detune, MIDI pitch, and frequency are newtypes (`Bpm`, `Cents`, `MidiNote`, `Frequency` in `core/music.rs`), not bare `f32`s. `Bpm` and `Cents` validate at construction (`Bpm::new` clamps to `[1, 400]` and sanitizes non-finite; `Cents::new` clamps to ±200), so an out-of-range tempo or detune is unrepresentable and the engine setters carry no runtime guard. `MidiNote::to_freq` is the single typed path from a pitch to the `Frequency` that flows through `NoteEvent` into the audio layer, so a MIDI number can't be passed where Hz is expected.
+
 **Fullscreen-triangle passes.** The waves pass and every post step are a single oversized triangle (`draw(0..3, 0..1)`, no vertex buffer) — the standard cheaper-than-a-quad fullscreen idiom.
 
 **Compile-time-embedded shaders.** WGSL is pulled in with `include_str!` (`core::WAVES_WGSL` / `POST_WGSL`), so the shaders are compiled into the WASM — no runtime fetch, no separate asset to deploy.
@@ -91,7 +93,6 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 Patterns the codebase would benefit from but does not yet apply consistently:
 
-- **Domain newtypes.** Pitches, tempos, and detune are passed as raw `f32`/`i32` everywhere, so nothing stops a MIDI number being used as a frequency or a BPM. `MidiNote`, `Frequency`, `Cents`, and `BPM` newtypes (with range validation) would make those mistakes unrepresentable. The conversion-heavy `core/music.rs` is where this would pay off most.
 - **Extend the constants pattern to audio.** `audio.rs` and `core/music.rs` carry the bulk of the project's magic numbers (filter cutoffs, gains, envelope shapes, gate/motif weights) inline. Lifting the audio FX design and the generative tuning into named constants — the way `constants.rs` already does for the visuals — would make the sound design legible and tweakable in one place.
 
 ## How a Frame Is Produced

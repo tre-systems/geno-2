@@ -1,4 +1,4 @@
-use crate::core::{EngineParams, MusicEngine, VoiceConfig, Waveform, DORIAN};
+use crate::core::{Bpm, Cents, EngineParams, MusicEngine, VoiceConfig, Waveform, DORIAN};
 use crate::{audio, dom, events, frame, input, overlay, render};
 use glam::Vec3;
 use std::cell::RefCell;
@@ -73,10 +73,10 @@ async fn build_audio_and_engine(_document: web::Document) -> anyhow::Result<Init
     let engine = Rc::new(RefCell::new(MusicEngine::new(
         voice_configs,
         EngineParams {
-            bpm: 84.0,
+            bpm: Bpm::new(84.0),
             scale: DORIAN,
             root_midi: 62,
-            detune_cents: 0.0,
+            detune_cents: Cents::default(),
         },
         42,
     )));

@@ -1,7 +1,7 @@
 use crate::audio;
 use crate::core::{
-    midi_to_hz, MusicEngine, AEOLIAN, C_MAJOR_PENTATONIC, DORIAN, IONIAN, LOCRIAN, LYDIAN,
-    MIXOLYDIAN, PHRYGIAN, TET19_PENTATONIC, TET24_PENTATONIC, TET31_PENTATONIC,
+    Bpm, Cents, MidiNote, MusicEngine, AEOLIAN, C_MAJOR_PENTATONIC, DORIAN, IONIAN, LOCRIAN,
+    LYDIAN, MIXOLYDIAN, PHRYGIAN, TET19_PENTATONIC, TET24_PENTATONIC, TET31_PENTATONIC,
 };
 use crate::input;
 use crate::input::TouchGestureKind;
@@ -242,10 +242,12 @@ fn wire_pointermove(w: &InputWiring) {
         }
 
         let mut eng = w.engine.borrow_mut();
-        eng.set_bpm((50.0 + 122.0 * travel_n + 24.0 * motion).clamp(38.0, 180.0));
+        eng.set_bpm(Bpm::new(
+            (50.0 + 122.0 * travel_n + 24.0 * motion).clamp(38.0, 180.0),
+        ));
         let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 145.0 + (uvx - 0.5) * 90.0)
             .clamp(-200.0, 200.0);
-        eng.set_detune_cents(detune);
+        eng.set_detune_cents(Cents::new(detune));
 
         let voice_len = eng.voices.len().max(1);
         let base_radius = (0.22 + 0.86 * travel_n).clamp(0.20, 1.12);
@@ -321,8 +323,8 @@ fn handle_two_finger_move(w: &InputWiring, w_px: f32, h_px: f32) {
 
     {
         let mut eng = w.engine.borrow_mut();
-        eng.set_bpm(new_bpm);
-        eng.set_detune_cents(new_detune);
+        eng.set_bpm(Bpm::new(new_bpm));
+        eng.set_detune_cents(Cents::new(new_detune));
     }
 
     {
@@ -436,8 +438,8 @@ fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
                 mt.gesture_kind = TouchGestureKind::TwoFingerPinchRotate;
                 mt.initial_distance = dist;
                 mt.initial_angle = angle;
-                mt.initial_bpm = eng.params.bpm;
-                mt.initial_detune = eng.params.detune_cents;
+                mt.initial_bpm = eng.params.bpm.get();
+                mt.initial_detune = eng.params.detune_cents.get();
                 log::info!(
                     "[gesture] multitouch-2 begin dist={:.0}px angle={:.2}rad",
                     dist,
@@ -674,15 +676,17 @@ fn wire_pointerup(w: &InputWiring) {
                 let mut eng = w.engine.borrow_mut();
                 eng.params.root_midi = root;
                 eng.params.scale = mode;
-                eng.set_bpm((50.0 + 122.0 * travel_n + 22.0 * motion_n).clamp(38.0, 180.0));
+                eng.set_bpm(Bpm::new(
+                    (50.0 + 122.0 * travel_n + 22.0 * motion_n).clamp(38.0, 180.0),
+                ));
                 let detune = ((0.5 - uvy) * 220.0 + spin_accum.sin() * 160.0 + (uvx - 0.5) * 90.0)
                     .clamp(-200.0, 200.0);
-                eng.set_detune_cents(detune);
+                eng.set_detune_cents(Cents::new(detune));
                 let voice_len = eng.voices.len();
                 for i in 0..voice_len {
                     eng.reseed_voice(i, None);
                 }
-                (eng.params.bpm, eng.params.detune_cents)
+                (eng.params.bpm.get(), eng.params.detune_cents.get())
             };
 
             let base_midi = 43.0 + angle01 * 30.0 + (0.5 - uvy) * 5.0;
@@ -692,7 +696,7 @@ fn wire_pointerup(w: &InputWiring) {
             for (i, interval) in accents.iter().enumerate() {
                 let vi = i % voice_len;
                 let wf = eng.configs[vi].waveform;
-                let freq = midi_to_hz(base_midi + *interval);
+                let freq = MidiNote(base_midi + *interval).to_freq(Cents::default());
                 let vel = (0.34 + 0.22 * motion_n + i as f32 * 0.03).clamp(0.0, 1.0);
                 let dur = 0.24 + 0.11 * (i % 3) as f64 + 0.16 * (1.0 - uvy as f64);
                 audio::trigger_one_shot(
@@ -743,7 +747,7 @@ fn wire_pointerup(w: &InputWiring) {
             for i in 0..flare_steps.len() {
                 let vi = i % voice_len;
                 let wf = eng.configs[vi].waveform;
-                let freq = midi_to_hz(base_midi + flare_steps[i]);
+                let freq = MidiNote(base_midi + flare_steps[i]).to_freq(Cents::default());
                 let vel = (0.30 + 0.24 * (1.0 - uvy) + i as f32 * 0.04).clamp(0.0, 1.0);
                 let dur = duration_base + 0.12 * (i % 3) as f64;
                 audio::trigger_one_shot(
@@ -902,8 +906,8 @@ fn update_hint_from_engine(w: &InputWiring) {
             let scale_name = scale_name(eng.params.scale);
             overlay::update_hint(
                 &document,
-                eng.params.detune_cents,
-                eng.params.bpm,
+                eng.params.detune_cents.get(),
+                eng.params.bpm.get(),
                 scale_name,
             );
             overlay::show_hint(&document);

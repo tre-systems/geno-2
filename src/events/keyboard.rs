@@ -1,4 +1,4 @@
-use crate::core::MusicEngine;
+use crate::core::{Bpm, Cents, MusicEngine};
 use crate::core::{
     AEOLIAN, C_MAJOR_PENTATONIC, DORIAN, IONIAN, LOCRIAN, LYDIAN, MIXOLYDIAN, PHRYGIAN,
     TET19_PENTATONIC, TET24_PENTATONIC, TET31_PENTATONIC,
@@ -39,8 +39,8 @@ fn update_hint_after_change(engine: &Rc<RefCell<MusicEngine>>) {
             let (detune, bpm, scale_name) = {
                 let eng = engine.borrow();
                 (
-                    eng.params.detune_cents,
-                    eng.params.bpm,
+                    eng.params.detune_cents.get(),
+                    eng.params.bpm.get(),
                     get_scale_name(eng.params.scale),
                 )
             };
@@ -103,14 +103,14 @@ pub fn handle_global_keydown(
         }
         "ArrowRight" | "+" | "=" => {
             let mut eng = engine.borrow_mut();
-            let new_bpm = (eng.params.bpm + 5.0).min(240.0);
+            let new_bpm = Bpm::new((eng.params.bpm.get() + 5.0).min(240.0));
             eng.set_bpm(new_bpm);
             drop(eng);
             update_hint_after_change(engine);
         }
         "ArrowLeft" | "-" | "_" => {
             let mut eng = engine.borrow_mut();
-            let new_bpm = (eng.params.bpm - 5.0).max(40.0);
+            let new_bpm = Bpm::new((eng.params.bpm.get() - 5.0).max(40.0));
             eng.set_bpm(new_bpm);
             drop(eng);
             update_hint_after_change(engine);
@@ -134,9 +134,9 @@ pub fn handle_global_keydown(
         "," => {
             let mut eng = engine.borrow_mut();
             if ev.shift_key() {
-                eng.adjust_detune_cents(-10.0); // Fine adjustment
+                eng.adjust_detune_cents(Cents::new(-10.0)); // Fine adjustment
             } else {
-                eng.adjust_detune_cents(-50.0); // Coarse adjustment
+                eng.adjust_detune_cents(Cents::new(-50.0)); // Coarse adjustment
             }
             drop(eng);
             update_hint_after_change(engine);
@@ -144,9 +144,9 @@ pub fn handle_global_keydown(
         "." => {
             let mut eng = engine.borrow_mut();
             if ev.shift_key() {
-                eng.adjust_detune_cents(10.0); // Fine adjustment
+                eng.adjust_detune_cents(Cents::new(10.0)); // Fine adjustment
             } else {
-                eng.adjust_detune_cents(50.0); // Coarse adjustment
+                eng.adjust_detune_cents(Cents::new(50.0)); // Coarse adjustment
             }
             drop(eng);
             update_hint_after_change(engine);

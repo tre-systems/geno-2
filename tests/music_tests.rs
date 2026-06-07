@@ -52,14 +52,14 @@ fn midi_to_hz_is_monotonic_over_range() {
 fn engine_tick_emits_some_events_over_time() {
     let mut engine = make_engine();
     let mut events = Vec::new();
-    let seconds_per_beat = 60.0 / engine.params.bpm as f64;
+    let seconds_per_beat = 60.0 / engine.params.bpm.get() as f64;
     for _ in 0..200 {
         engine.tick(Duration::from_secs_f64(seconds_per_beat / 2.0), &mut events);
     }
     assert!(!events.is_empty(), "expected some scheduled events");
     for ev in &events {
         assert!(ev.voice_index < engine.voices.len());
-        assert!(ev.frequency_hz > 0.0);
+        assert!(ev.frequency_hz.hz() > 0.0);
         assert!(ev.velocity >= 0.0 && ev.velocity <= 1.0);
         assert!(ev.duration_sec > 0.0);
     }
@@ -199,7 +199,11 @@ fn midi_to_hz_with_detune_bounds() {
 #[test]
 fn engine_params_detune_default() {
     let params = EngineParams::default();
-    assert_eq!(params.detune_cents, 0.0, "Default detune should be 0¢");
+    assert_eq!(
+        params.detune_cents.get(),
+        0.0,
+        "Default detune should be 0¢"
+    );
 }
 
 #[test]
@@ -207,61 +211,82 @@ fn engine_detune_methods() {
     let mut engine = make_engine();
 
     // Test set_detune_cents
-    engine.set_detune_cents(50.0);
+    engine.set_detune_cents(Cents::new(50.0));
     assert_eq!(
-        engine.params.detune_cents, 50.0,
+        engine.params.detune_cents.get(),
+        50.0,
         "set_detune_cents should work"
     );
 
-    // Test bounds clamping
-    engine.set_detune_cents(300.0);
+    // Test bounds clamping (Cents::new clamps at construction)
+    engine.set_detune_cents(Cents::new(300.0));
     assert_eq!(
-        engine.params.detune_cents, 200.0,
-        "set_detune_cents should clamp to +200¢"
+        engine.params.detune_cents.get(),
+        200.0,
+        "Cents should clamp to +200¢"
     );
 
-    engine.set_detune_cents(-300.0);
+    engine.set_detune_cents(Cents::new(-300.0));
     assert_eq!(
-        engine.params.detune_cents, -200.0,
-        "set_detune_cents should clamp to -200¢"
+        engine.params.detune_cents.get(),
+        -200.0,
+        "Cents should clamp to -200¢"
     );
 
     // Test adjust_detune_cents
-    engine.adjust_detune_cents(25.0);
+    engine.adjust_detune_cents(Cents::new(25.0));
     assert_eq!(
-        engine.params.detune_cents, -175.0,
+        engine.params.detune_cents.get(),
+        -175.0,
         "adjust_detune_cents should work"
     );
 
     // Test reset_detune
     engine.reset_detune();
-    assert_eq!(engine.params.detune_cents, 0.0, "reset_detune should work");
+    assert_eq!(
+        engine.params.detune_cents.get(),
+        0.0,
+        "reset_detune should work"
+    );
 }
 
 #[test]
 fn engine_bpm_methods_guard_invalid_values() {
     let mut engine = make_engine();
 
-    engine.set_bpm(180.0);
-    assert_eq!(engine.params.bpm, 180.0);
+    engine.set_bpm(Bpm::new(180.0));
+    assert_eq!(engine.params.bpm.get(), 180.0);
 
-    engine.set_bpm(-20.0);
-    assert_eq!(engine.params.bpm, 1.0, "bpm should clamp to lower bound");
+    engine.set_bpm(Bpm::new(-20.0));
+    assert_eq!(
+        engine.params.bpm.get(),
+        1.0,
+        "bpm should clamp to lower bound"
+    );
 
-    engine.set_bpm(1000.0);
-    assert_eq!(engine.params.bpm, 400.0, "bpm should clamp to upper bound");
+    engine.set_bpm(Bpm::new(1000.0));
+    assert_eq!(
+        engine.params.bpm.get(),
+        400.0,
+        "bpm should clamp to upper bound"
+    );
 
-    engine.set_bpm(f32::NAN);
-    assert_eq!(engine.params.bpm, 400.0, "non-finite bpm should be ignored");
+    engine.set_bpm(Bpm::new(f32::NAN));
+    assert_eq!(
+        engine.params.bpm.get(),
+        1.0,
+        "non-finite bpm collapses to the minimum"
+    );
 }
 
 #[test]
-fn engine_tick_ignores_invalid_bpm_state() {
-    let mut engine = make_engine();
-    engine.params.bpm = -10.0; // simulate invalid state from external mutation
-    let mut events = Vec::new();
-    engine.tick(Duration::from_secs_f32(1.0), &mut events);
-    assert!(events.is_empty(), "invalid bpm should not schedule events");
+fn newtypes_clamp_out_of_range_values() {
+    // The Bpm/Cents newtypes make an invalid engine tempo/detune unrepresentable.
+    assert_eq!(Bpm::new(-10.0).get(), Bpm::MIN);
+    assert_eq!(Bpm::new(f32::NAN).get(), Bpm::MIN);
+    assert_eq!(Bpm::new(10_000.0).get(), Bpm::MAX);
+    assert_eq!(Cents::new(500.0).get(), Cents::LIMIT);
+    assert_eq!(Cents::new(-500.0).get(), -Cents::LIMIT);
 }
 
 #[test]
@@ -281,9 +306,9 @@ fn engine_schedule_with_detune() {
     };
     let mut engine = MusicEngine::new(configs, params, 12345);
 
-    engine.set_detune_cents(50.0);
+    engine.set_detune_cents(Cents::new(50.0));
     let mut events = Vec::new();
-    let seconds_per_beat = 60.0 / engine.params.bpm as f64;
+    let seconds_per_beat = 60.0 / engine.params.bpm.get() as f64;
     engine.tick(Duration::from_secs_f64(seconds_per_beat / 2.0), &mut events);
 
     assert!(
@@ -291,12 +316,12 @@ fn engine_schedule_with_detune() {
         "expected at least one event with probability=1.0"
     );
 
-    let expected = midi_to_hz_with_detune(60.0, engine.params.detune_cents);
+    let expected = midi_to_hz_with_detune(60.0, engine.params.detune_cents.get());
     for ev in &events {
         assert!(
-            (ev.frequency_hz - expected).abs() < 1e-6,
+            (ev.frequency_hz.hz() - expected).abs() < 1e-6,
             "scheduled freq does not include detune: got {:.6}, expected {:.6}",
-            ev.frequency_hz,
+            ev.frequency_hz.hz(),
             expected
         );
     }

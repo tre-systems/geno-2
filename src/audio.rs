@@ -1,4 +1,4 @@
-use crate::core::Waveform;
+use crate::core::{Frequency, Waveform};
 use glam::Vec3;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -171,13 +171,14 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
 pub fn trigger_one_shot(
     audio_ctx: &web::AudioContext,
     waveform: Waveform,
-    frequency_hz: f32,
+    frequency: Frequency,
     velocity: f32,
     duration_sec: f64,
     voice_gain: &web::GainNode,
     delay_send: &web::GainNode,
     reverb_send: &web::GainNode,
 ) {
+    let frequency_hz = frequency.hz();
     let src_main = match web::OscillatorNode::new(audio_ctx) {
         Ok(s) => s,
         Err(_) => return,

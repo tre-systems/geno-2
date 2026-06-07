@@ -11,7 +11,6 @@ Ordered, honest next work. No status history — see git for what changed.
 
 ## Engine
 
-- Strong newtypes (`MidiNote`, `Frequency`, `Cents`, `BPM`) to prevent unit mix-ups at call sites.
 - Configurable scheduling grid (16th notes, triplets, dotted) instead of the fixed eighth-note grid.
 
 ## Visuals

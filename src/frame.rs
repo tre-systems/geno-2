@@ -287,12 +287,10 @@ impl<'a> FrameContext<'a> {
             };
 
             match g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot) {
-                Ok(()) => {}
+                render::RenderOutcome::Presented | render::RenderOutcome::Skipped => {}
                 // Swapchain lost/outdated (GPU reset, tab restore): reconfigure and
                 // pick up the next frame rather than freezing on a stale surface.
-                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => g.reconfigure(),
-                Err(wgpu::SurfaceError::Timeout) => {}
-                Err(e) => log::error!("render error: {:?}", e),
+                render::RenderOutcome::NeedsReconfigure => g.reconfigure(),
             }
         }
     }

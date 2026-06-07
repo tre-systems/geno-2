@@ -50,7 +50,7 @@ web-sys = { version = "0.3", features = [
   "BiquadFilterType",
   "DynamicsCompressorNode",
 ] }
-wgpu = { version = "24.0", features = ["webgpu"] }
+wgpu = { version = "29.0", features = ["webgpu"] }
 glam = "0.27"
 bytemuck = { version = "1.16", features = ["derive"] }
 web-time = "1.1"

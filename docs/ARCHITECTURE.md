@@ -9,7 +9,7 @@
 | Layer        | Choice                                  | Notes                                                            |
 | ------------ | --------------------------------------- | --------------------------------------------------------------- |
 | Language     | Rust (edition 2021)                     | 22 modules + 2 WGSL shaders, one crate (`app-web`)       |
-| GPU          | `wgpu` 24 (WebGPU)                      | Fullscreen waves pass + bloom/composite; no WebGL fallback      |
+| GPU          | `wgpu` 29 (WebGPU)                      | Fullscreen waves pass + bloom/composite; no WebGL fallback      |
 | Shaders      | WGSL                                    | `waves.wgsl` (scene), `post.wgsl` (bright-pass, blur, composite) |
 | Audio        | WebAudio via `web-sys`                  | Procedural synthesis + FX graph; no audio samples shipped       |
 | Math / POD   | `glam`, `bytemuck`                      | Vector math; `#[repr(C)]` uniforms cast straight into buffers   |

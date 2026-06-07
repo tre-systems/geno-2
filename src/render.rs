@@ -23,6 +23,18 @@ pub(crate) struct PostUniforms {
 // POD layout guard: the Rust side of the uniform contract in shaders/post.wgsl.
 const _: () = assert!(std::mem::size_of::<PostUniforms>() == 32);
 
+/// How a `render()` call left the swapchain, so the frame loop knows whether to
+/// reconfigure. wgpu 29 replaced the old `Result<_, SurfaceError>` with the
+/// `CurrentSurfaceTexture` enum; this maps it down to the loop's two reactions.
+pub enum RenderOutcome {
+    /// Frame submitted and presented (the swapchain may have been suboptimal).
+    Presented,
+    /// Swapchain lost/outdated — caller should `reconfigure()` before next frame.
+    NeedsReconfigure,
+    /// Transient (timeout/occluded/validation) — skip and retry next frame.
+    Skipped,
+}
+
 pub struct GpuState<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -72,9 +84,9 @@ impl<'a> GpuState<'a> {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| {
+            .map_err(|e| {
                 anyhow::anyhow!(
-                    "No WebGPU adapter available. This could be due to:\n\
+                    "No WebGPU adapter available ({e}). This could be due to:\n\
                      - WebGPU not supported in this browser\n\
                      - WebGPU disabled in browser settings\n\
                      - Running in headless mode without GPU access\n\
@@ -82,16 +94,15 @@ impl<'a> GpuState<'a> {
                 )
             })?;
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    required_features: wgpu::Features::empty(),
-                    // Use default limits on web to avoid passing unknown fields to older WebGPU impls
-                    required_limits: wgpu::Limits::default(),
-                    memory_hints: wgpu::MemoryHints::Performance,
-                    label: None,
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                required_features: wgpu::Features::empty(),
+                // Use default limits on web to avoid passing unknown fields to older WebGPU impls
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::Performance,
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+                label: None,
+                trace: wgpu::Trace::Off,
+            })
             .await
             .map_err(|e| {
                 anyhow::anyhow!(
@@ -172,7 +183,7 @@ impl<'a> GpuState<'a> {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
         let post = post::create_post_resources(&device, &post_shader, bloom_format, format);
@@ -288,9 +299,25 @@ impl<'a> GpuState<'a> {
         dt_sec: f32,
         voice_positions: &[Vec3],
         pulse_energy: &[f32],
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> RenderOutcome {
         self.time_accum += dt_sec.max(0.0);
-        let frame = self.surface.get_current_texture()?;
+        let frame = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            // Swapchain lost/outdated (GPU reset, tab restore): ask the caller to
+            // reconfigure, then render on the next frame rather than freeze.
+            wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
+                return RenderOutcome::NeedsReconfigure
+            }
+            // Transient: nothing to draw into this tick.
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return RenderOutcome::Skipped
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                log::error!("surface validation error while acquiring frame");
+                return RenderOutcome::Skipped;
+            }
+        };
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -304,6 +331,7 @@ impl<'a> GpuState<'a> {
                 label: Some("scene_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.targets.hdr_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(self.clear_color),
@@ -313,6 +341,7 @@ impl<'a> GpuState<'a> {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             let w = WavesUniforms {
                 resolution: [self.width as f32, self.height as f32],
@@ -445,7 +474,7 @@ impl<'a> GpuState<'a> {
 
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-        Ok(())
+        RenderOutcome::Presented
     }
 
     fn rebuild_post_bind_groups(&mut self) {

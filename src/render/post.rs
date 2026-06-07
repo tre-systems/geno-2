@@ -75,13 +75,13 @@ pub(crate) fn create_post_resources(
     });
     let pl_bright_blur = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("pl_post_0"),
-        bind_group_layouts: &[&bgl0],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bgl0)],
+        immediate_size: 0,
     });
     let pl_composite = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("pl_post_comp"),
-        bind_group_layouts: &[&bgl0, &bgl1],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bgl0), Some(&bgl1)],
+        immediate_size: 0,
     });
     let bright_pipeline = super::helpers::make_post_pipeline(
         device,
@@ -131,6 +131,7 @@ pub(crate) fn blit(
         label: Some(label),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view: target,
+            depth_slice: None,
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(clear),
@@ -140,6 +141,7 @@ pub(crate) fn blit(
         depth_stencil_attachment: None,
         timestamp_writes: None,
         occlusion_query_set: None,
+        multiview_mask: None,
     });
     r.set_pipeline(pipeline);
     r.set_bind_group(0, bg0, &[]);

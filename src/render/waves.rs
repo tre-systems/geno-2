@@ -54,8 +54,8 @@ pub(crate) fn create_waves_resources(
     });
     let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("waves_pl"),
-        bind_group_layouts: &[&bgl],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("waves_pipeline"),
@@ -80,7 +80,7 @@ pub(crate) fn create_waves_resources(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         cache: None,
-        multiview: None,
+        multiview_mask: None,
     });
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("waves_uniforms"),

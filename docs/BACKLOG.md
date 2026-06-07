@@ -9,7 +9,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 ## P2 — performance & robustness
 
 - **Adaptive render resolution.** Feed the per-frame `dt` into an EMA → render-scale controller: render the scene into a scaled HDR target and let the composite upscale, to hold 60 fps on weak GPUs. It only activates under load, so verify the scaled path with a forced low scale. (`src/render.rs`, `src/frame.rs`)
-- **Dependency modernization.** Everything is ~a generation behind. **wgpu 24 → 29** is a real API migration (scoped): `DeviceDescriptor` gains `experimental_features` + `trace`; `request_adapter`/`request_device` return `Result` (and `request_device` drops its trace arg); the surface flow becomes `get_current_texture() -> CurrentSurfaceTexture` (replacing the `SurfaceError` path); `RenderPass`/`Pipeline` `multiview` → `multiview_mask: None`; `RenderPassColorAttachment` gains `depth_slice: None`; `PipelineLayoutDescriptor.bind_group_layouts` entries become `Option`-wrapped and `push_constant_ranges` → `immediate_size`. Then glam, rand, getrandom, and the wasm-bindgen / web-sys family. (`Cargo.toml`, `src/render.rs`, `src/render/*`)
+- **Dependency modernization.** A few crates trail the latest release — glam, the wasm-bindgen / web-sys / js-sys family, and rand / getrandom. The wasm-bindgen and glam bumps are mechanical; bumping `rand` / `getrandom` changes the generated note sequences, so retune by ear (it dovetails with *Drop `rand` / `getrandom`* in P3). (`Cargo.toml`)
 - **Assert the cache headers.** A `Cache-Control` test on the worker's `?v=`-tagged assets vs the `env.js` / HTML entry — the immutable-vs-`no-cache` logic is the riskiest deploy surface and is untested. (`worker.js`)
 
 ## P3 — polish & housekeeping

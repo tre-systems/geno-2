@@ -57,6 +57,6 @@ pub fn make_post_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         cache: None,
-        multiview: None,
+        multiview_mask: None,
     })
 }

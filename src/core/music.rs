@@ -87,10 +87,14 @@ pub const MIXOLYDIAN: &[f32] = &[0.0, 2.0, 4.0, 5.0, 7.0, 9.0, 10.0, 12.0];
 pub const AEOLIAN: &[f32] = &[0.0, 2.0, 3.0, 5.0, 7.0, 8.0, 10.0, 12.0]; // natural minor
 pub const LOCRIAN: &[f32] = &[0.0, 1.0, 3.0, 5.0, 6.0, 8.0, 10.0, 12.0];
 
-/// Alternative tuning systems (pentatonic variants)
-pub const TET19_PENTATONIC: &[f32] = &[0.0, 2.4, 4.8, 7.2, 9.6, 12.0];
+/// Alternative tuning systems, as semitone offsets (the last entry is the octave).
+/// The 19-TET and 31-TET variants are the n-EDO major pentatonic — the major
+/// scale's pentatonic degrees mapped to semitones by `step * 12 / n` — so each
+/// lands on a genuinely different microtonal grid. 24-TET is a quarter-tone
+/// pentatonic (every value is a multiple of a 24-EDO step).
+pub const TET19_PENTATONIC: &[f32] = &[0.0, 1.8947, 3.7895, 6.9474, 8.8421, 12.0]; // 19-EDO steps 0,3,6,11,14
 pub const TET24_PENTATONIC: &[f32] = &[0.0, 2.5, 5.0, 7.5, 10.0, 12.0];
-pub const TET31_PENTATONIC: &[f32] = &[0.0, 2.4, 4.8, 7.2, 9.6, 12.0];
+pub const TET31_PENTATONIC: &[f32] = &[0.0, 1.9355, 3.871, 6.9677, 8.9032, 12.0]; // 31-EDO steps 0,5,10,18,23
 
 /// Random generative scheduler producing `NoteEvent`s on an eighth-note grid.
 ///

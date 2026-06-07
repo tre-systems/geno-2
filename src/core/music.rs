@@ -94,7 +94,6 @@ pub struct VoiceConfig {
 /// - `voice_index`: which voice this event belongs to (index into `voices`)
 /// - `frequency_hz`: target pitch in Hertz (already converted from MIDI)
 /// - `velocity`: normalized loudness 0..1 (mapped to gain envelope)
-/// - `start_time_sec`: absolute start time (AudioContext time) in seconds
 /// - `duration_sec`: nominal duration in seconds (envelope length)
 #[derive(Clone, Debug, Default)]
 pub struct NoteEvent {
@@ -250,6 +249,9 @@ impl MusicEngine {
             return;
         }
         self.beat_accum += dt.as_secs_f64();
+        // Bound catch-up so a long stall (e.g. a backgrounded tab whose rAF was
+        // throttled) doesn't dump a flood of notes when the loop resumes.
+        self.beat_accum = self.beat_accum.min(step * MAX_CATCHUP_STEPS);
         while self.beat_accum >= step {
             // eighth notes grid
             self.beat_accum -= step;
@@ -384,6 +386,10 @@ impl MusicEngine {
         }
     }
 }
+
+/// Maximum grid steps the scheduler catches up in a single `tick`, bounding the
+/// note flood after a long stall (a backgrounded, rAF-throttled tab).
+const MAX_CATCHUP_STEPS: f64 = 4.0;
 
 const PHRASE_ROOT_SHIFTS: [f32; 16] = [
     0.0, 0.0, 5.0, 5.0, 3.0, 3.0, 7.0, 7.0, 2.0, 2.0, 8.0, 8.0, 10.0, 10.0, 5.0, 5.0,

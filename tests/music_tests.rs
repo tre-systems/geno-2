@@ -65,6 +65,20 @@ fn engine_tick_emits_some_events_over_time() {
     }
 }
 
+#[test]
+fn tick_caps_catch_up_after_a_long_stall() {
+    let mut engine = make_engine();
+    let mut events = Vec::new();
+    // A 10s stall is hundreds of grid steps; the accumulator clamp must bound it
+    // to at most MAX_CATCHUP_STEPS (4) grid steps across the 3 voices.
+    engine.tick(Duration::from_secs(10), &mut events);
+    assert!(
+        events.len() <= 12,
+        "catch-up not bounded after a long stall: {} events",
+        events.len()
+    );
+}
+
 // Property-based tests for midi_to_hz function
 #[test]
 fn midi_to_hz_octave_doubling_property() {

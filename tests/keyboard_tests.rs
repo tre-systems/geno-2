@@ -51,28 +51,27 @@ fn mode_scale_for_digit_invalid_keys() {
     }
 }
 
+/// Every scale spans one octave [0, 12] and rises strictly.
+fn assert_well_formed_scale(digit: &str, expected_len: usize) {
+    let scale = mode_scale_for_digit(digit).unwrap();
+    assert_eq!(scale.len(), expected_len, "digit {digit} note count");
+    assert!((scale[0] - 0.0).abs() < 1e-6);
+    assert!((scale[scale.len() - 1] - 12.0).abs() < 1e-6);
+    for i in 1..scale.len() {
+        assert!(scale[i] > scale[i - 1], "scale {digit} must be monotonic");
+    }
+}
+
 #[test]
 fn diatonic_mode_scales_are_well_formed() {
     for digit in ["1", "2", "3", "4", "5", "6", "7"] {
-        let scale = mode_scale_for_digit(digit).unwrap();
-        assert_eq!(scale.len(), 8, "digit {digit} should map to a 7-note mode");
-        assert!((scale[0] - 0.0).abs() < 1e-6);
-        assert!((scale[scale.len() - 1] - 12.0).abs() < 1e-6);
-        for i in 1..scale.len() {
-            assert!(scale[i] > scale[i - 1], "mode {digit} must be monotonic");
-        }
+        assert_well_formed_scale(digit, 8);
     }
 }
 
 #[test]
 fn alternate_tuning_scales_are_well_formed() {
     for digit in ["8", "9", "0"] {
-        let scale = mode_scale_for_digit(digit).unwrap();
-        assert_eq!(scale.len(), 6, "digit {digit} should map to pentatonic");
-        assert!((scale[0] - 0.0).abs() < 1e-6);
-        assert!((scale[scale.len() - 1] - 12.0).abs() < 1e-6);
-        for i in 1..scale.len() {
-            assert!(scale[i] > scale[i - 1], "tuning {digit} must be monotonic");
-        }
+        assert_well_formed_scale(digit, 6);
     }
 }

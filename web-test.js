@@ -134,14 +134,12 @@ async function gotoWithRetry(
 
     if (!logs.some((l) => /\[keys\] master muted=true/.test(l)))
       throw new Error("missing master mute= true log");
-    // Muted state no longer shown in hint; rely on logs only
 
     await page.keyboard.press("KeyM");
     await new Promise((r) => setTimeout(r, 120));
 
     if (!logs.some((l) => /\[keys\] master muted=false/.test(l)))
       throw new Error("missing master mute= false log");
-    // Muted state no longer shown in hint; rely on logs only
 
     // Click center to trigger a gesture flare
     await page.mouse.move(box.x, box.y);

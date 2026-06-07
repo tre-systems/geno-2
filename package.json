@@ -27,7 +27,7 @@
     "webaudio",
     "wasm",
     "rust",
-    "ambient-music"
+    "generative-music"
   ],
   "author": "",
   "license": "MIT",

@@ -1,4 +1,4 @@
-# Geno-2: Ambient Generative Instrument
+# Geno-2 // Lattice
 
 <div align="center">
 
@@ -14,13 +14,13 @@
 </div>
 
 Geno-2 is an original audiovisual instrument built with Rust + WebAssembly + WebGPU + WebAudio.  
-It keeps the Geno stack, but shifts into a different artistic direction: shoegaze/ambient tone design and high-energy kaleidoscopic interaction.
+It plays as **Lattice**: a geometric pulse instrument — sharp, polymetric rhythms and faceted, kaleidoscopic light over an atmospheric, reverb-and-delay mix. It starts in D Dorian.
 
 ## Highlights
 
 - Original visual system: geometric lattice distortion, ripple propagation, and audio-coupled swirl field.
 - Original gesture model: click for flare stacks; hold+drag to carve/reseed the field with strong musical and visual impact.
-- Ambient-forward mix design with dynamic leveling, compression, and FX mapping.
+- Atmospheric, reverb-and-delay-forward mix with dynamic leveling, compression, and gesture-driven FX mapping.
 - Deterministic build/deploy pipeline with CI checks on Rust + browser integration tests.
 
 ## Stack

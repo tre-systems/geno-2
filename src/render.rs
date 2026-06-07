@@ -20,6 +20,9 @@ pub(crate) struct PostUniforms {
     threshold: f32,
 }
 
+// POD layout guard: the Rust side of the uniform contract in shaders/post.wgsl.
+const _: () = assert!(std::mem::size_of::<PostUniforms>() == 32);
+
 pub struct GpuState<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,

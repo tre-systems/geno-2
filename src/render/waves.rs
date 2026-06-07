@@ -21,6 +21,12 @@ pub(crate) struct WavesUniforms {
     pub(crate) ripple_amp: f32,
 }
 
+// POD layout guards: these structs are the Rust side of the uniform contract in
+// shaders/waves.wgsl and must stay byte-compatible. The asserts fail the build if
+// a field is added or reordered without updating the shader's `Uniforms` to match.
+const _: () = assert!(std::mem::size_of::<VoicePacked>() == 16);
+const _: () = assert!(std::mem::size_of::<WavesUniforms>() == 96);
+
 pub(crate) struct WavesResources {
     pub(crate) pipeline: wgpu::RenderPipeline,
     pub(crate) uniform_buffer: wgpu::Buffer,

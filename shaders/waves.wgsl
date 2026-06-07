@@ -53,15 +53,26 @@ fn rot(a: f32) -> mat2x2<f32> {
     );
 }
 
+// Integer (PCG) hash — the same uniform [0,1) noise as fract(sin(...)) but
+// without the transcendental sin() (~18 per pixel in the Voronoi loop), which
+// bands and is slow on Mali/Adreno/Apple GPUs.
+fn pcg(v: u32) -> u32 {
+    let state = v * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
 fn hash21(p: vec2<f32>) -> f32 {
-    let h = dot(p, vec2<f32>(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
+    let q = vec2<u32>(bitcast<u32>(p.x), bitcast<u32>(p.y));
+    let h = pcg(q.x ^ pcg(q.y));
+    return f32(h) * (1.0 / 4294967296.0);
 }
 
 fn hash22(p: vec2<f32>) -> vec2<f32> {
-    let x = hash21(p + vec2<f32>(19.4, 7.1));
-    let y = hash21(p + vec2<f32>(83.2, 53.8));
-    return vec2<f32>(x, y);
+    let q = vec2<u32>(bitcast<u32>(p.x), bitcast<u32>(p.y));
+    let h1 = pcg(q.x ^ pcg(q.y));
+    let h2 = pcg(h1);
+    return vec2<f32>(f32(h1), f32(h2)) * (1.0 / 4294967296.0);
 }
 
 fn palette(t: f32) -> vec3<f32> {

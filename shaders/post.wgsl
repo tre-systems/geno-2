@@ -53,14 +53,29 @@ fn aces_tonemap(x: vec3<f32>) -> vec3<f32> {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// Integer (PCG) hash — uniform [0,1) noise without a transcendental.
+fn pcg(v: u32) -> u32 {
+    let state = v * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
 fn hash21(p: vec2<f32>) -> f32 {
-    let h = dot(p, vec2<f32>(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
+    let q = vec2<u32>(bitcast<u32>(p.x), bitcast<u32>(p.y));
+    let h = pcg(q.x ^ pcg(q.y));
+    return f32(h) * (1.0 / 4294967296.0);
 }
 
 @fragment
 fn fs_bright(inp: VsOut) -> @location(0) vec4<f32> {
-    let col = textureSample(hdr_tex, hdr_sampler, inp.uv).rgb;
+    // 2x2 box tap over the full-res source so thin bright features don't shimmer
+    // when downsampled into the half-res bloom buffer.
+    let o = 0.5 / vec2<f32>(textureDimensions(hdr_tex));
+    var col = textureSample(hdr_tex, hdr_sampler, inp.uv + vec2<f32>(-o.x, -o.y)).rgb;
+    col += textureSample(hdr_tex, hdr_sampler, inp.uv + vec2<f32>(o.x, -o.y)).rgb;
+    col += textureSample(hdr_tex, hdr_sampler, inp.uv + vec2<f32>(-o.x, o.y)).rgb;
+    col += textureSample(hdr_tex, hdr_sampler, inp.uv + vec2<f32>(o.x, o.y)).rgb;
+    col *= 0.25;
     let l = luminance(col);
     let k = max(l - u_post.threshold, 0.0);
     let outc = col * (k / max(l, 1e-5));

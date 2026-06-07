@@ -10,7 +10,7 @@
 
 use crate::audio;
 use crate::constants::{
-    D_SEND_BASE, D_SEND_CLAMP_MAX, D_SEND_SPAN, DIST_NORM_DIVISOR, LEVEL_BASE, LEVEL_SPAN,
+    DIST_NORM_DIVISOR, D_SEND_BASE, D_SEND_CLAMP_MAX, D_SEND_SPAN, LEVEL_BASE, LEVEL_SPAN,
     R_SEND_BASE, R_SEND_CLAMP_MAX, R_SEND_SPAN,
 };
 use crate::core::{MusicEngine, NoteEvent, Waveform};
@@ -54,8 +54,14 @@ pub async fn render_audio_wav(
     let fx = audio::build_fx_buses(base).map_err(|e| JsValue::from_str(&format!("fx: {e:?}")))?;
     let configs = instrument::default_voice_configs();
     let positions: Vec<Vec3> = configs.iter().map(|c| c.base_position).collect();
-    let routing = audio::wire_voices(base, &positions, &fx.master_gain, &fx.delay_in, &fx.reverb_in)
-        .map_err(|e| JsValue::from_str(&format!("voices: {e:?}")))?;
+    let routing = audio::wire_voices(
+        base,
+        &positions,
+        &fx.master_gain,
+        &fx.delay_in,
+        &fx.reverb_in,
+    )
+    .map_err(|e| JsValue::from_str(&format!("voices: {e:?}")))?;
 
     // The realtime frame loop ramps voice levels / sends every frame; with no
     // interaction they settle to constants, so set those steady values once.

@@ -75,3 +75,8 @@ pub const SCHEDULE_AHEAD_SEC: f64 = 0.12;
 // Cap grid steps generated per frame so a resync after a long stall (a
 // backgrounded, rAF-throttled tab) can't dump a flood of notes at once.
 pub const MAX_SCHEDULE_STEPS_PER_FRAME: u32 = 8;
+
+// Time constant for set_target_at_time smoothing of the per-frame audio params
+// (FX wet/feedback, sends, voice gains, panner positions) — removes the zipper
+// noise from set_value steps without feeling sluggish.
+pub const AUDIO_SMOOTH_SEC: f64 = 0.03;

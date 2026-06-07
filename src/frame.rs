@@ -131,6 +131,7 @@ impl<'a> FrameContext<'a> {
             self.swirl_energy,
             gesture_flash,
             uv,
+            audio_time,
         );
 
         // Per-voice audio positioning and sends
@@ -144,9 +145,21 @@ impl<'a> FrameContext<'a> {
         }
         for i in 0..self.voice_panners.len() {
             let pos = voice_positions_snapshot[i];
-            self.voice_panners[i].position_x().set_value(pos.x as f32);
-            self.voice_panners[i].position_y().set_value(pos.y as f32);
-            self.voice_panners[i].position_z().set_value(pos.z as f32);
+            ramp(
+                &self.voice_panners[i].position_x(),
+                pos.x as f32,
+                audio_time,
+            );
+            ramp(
+                &self.voice_panners[i].position_y(),
+                pos.y as f32,
+                audio_time,
+            );
+            ramp(
+                &self.voice_panners[i].position_z(),
+                pos.z as f32,
+                audio_time,
+            );
             let dist = (pos.x * pos.x + pos.z * pos.z).sqrt();
             let mut d_amt = (D_SEND_BASE + D_SEND_SPAN * pos.x.abs().min(1.0)).clamp(0.0, 1.0);
             let mut r_amt = (R_SEND_BASE
@@ -155,11 +168,11 @@ impl<'a> FrameContext<'a> {
             let boost = 1.0 + SEND_BOOST_COEFF * self.swirl_energy;
             d_amt = (d_amt * boost).clamp(0.0, D_SEND_CLAMP_MAX);
             r_amt = (r_amt * boost).clamp(0.0, R_SEND_CLAMP_MAX);
-            self.delay_sends[i].gain().set_value(d_amt);
-            self.reverb_sends[i].gain().set_value(r_amt);
+            ramp(&self.delay_sends[i].gain(), d_amt, audio_time);
+            ramp(&self.reverb_sends[i].gain(), r_amt, audio_time);
             let lvl = (LEVEL_BASE + LEVEL_SPAN * (1.0 - (dist / DIST_NORM_DIVISOR).clamp(0.0, 1.0)))
                 as f32;
-            self.voice_gains[i].gain().set_value(lvl);
+            ramp(&self.voice_gains[i].gain(), lvl, audio_time);
         }
 
         let mut analyser_avg = 0.0_f32;
@@ -504,6 +517,13 @@ fn step_inertial_swirl(
     swirl_pos[1] = ny.clamp(0.0, 1.0);
 }
 
+/// Smoothly chase an `AudioParam` toward `value` with `set_target_at_time`
+/// instead of stepping it each frame (which zippers). `now` is the audio clock.
+#[inline]
+fn ramp(param: &web::AudioParam, value: f32, now: f64) {
+    _ = param.set_target_at_time(value, now, AUDIO_SMOOTH_SEC);
+}
+
 fn apply_global_fx_swirl(
     reverb_wet: &web::GainNode,
     delay_wet: &web::GainNode,
@@ -514,9 +534,12 @@ fn apply_global_fx_swirl(
     swirl_energy: f32,
     gesture_flash: f32,
     uv: [f32; 2],
+    now: f64,
 ) {
-    _ = reverb_wet.gain().set_value(
+    ramp(
+        &reverb_wet.gain(),
         (FX_REVERB_BASE + FX_REVERB_SPAN * swirl_energy + 0.10 * gesture_flash).clamp(0.0, 1.0),
+        now,
     );
     let echo = ((uv[0] - uv[1]).abs() * 0.85 + (uv[0] * uv[1]).sqrt() * 0.15).clamp(0.0, 1.0);
     let delay_wet_val = (FX_DELAY_WET_BASE
@@ -529,18 +552,18 @@ fn apply_global_fx_swirl(
         + FX_DELAY_FB_ECHO * echo
         + 0.06 * gesture_flash)
         .clamp(0.0, 0.95);
-    _ = delay_wet.gain().set_value(delay_wet_val);
-    _ = delay_feedback.gain().set_value(delay_fb_val);
+    ramp(&delay_wet.gain(), delay_wet_val, now);
+    ramp(&delay_feedback.gain(), delay_fb_val, now);
     let fizz = (0.62 * swirl_energy + 0.25 * (uv[0] * (1.0 - uv[1])) + 0.18 * gesture_flash)
         .clamp(0.0, 1.0);
     let drive = (FX_SAT_DRIVE_MIN + (FX_SAT_DRIVE_MAX - FX_SAT_DRIVE_MIN) * fizz)
         .clamp(FX_SAT_DRIVE_MIN, FX_SAT_DRIVE_MAX);
-    _ = sat_pre.gain().set_value(drive);
+    ramp(&sat_pre.gain(), drive, now);
     let wet = (FX_SAT_WET_BASE
         + FX_SAT_WET_SPAN * (0.55 * fizz + 0.35 * swirl_energy + 0.22 * gesture_flash))
         .clamp(0.0, 1.0);
-    _ = sat_wet.gain().set_value(wet);
-    _ = sat_dry.gain().set_value(1.0 - wet);
+    ramp(&sat_wet.gain(), wet, now);
+    ramp(&sat_dry.gain(), 1.0 - wet, now);
 }
 
 fn update_listener_to_camera(listener: &web::AudioListener, cam_eye: Vec3, cam_target: Vec3) {

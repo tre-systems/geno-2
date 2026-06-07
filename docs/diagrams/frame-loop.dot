@@ -25,10 +25,10 @@ digraph FrameLoop {
     style="rounded,filled",
     margin="0.22,0.13",
     width=3.5,
-    height=0.66,
+    height=0.70,
     fontname="Avenir",
-    fontsize=17,
-    penwidth=2.3,
+    fontsize=18,
+    penwidth=2.4,
     fontcolor="#14213d",
     color="#22865a",
     fillcolor="#eaf8ef:#ffffff",
@@ -46,7 +46,7 @@ digraph FrameLoop {
 
   START [label=<<B>rAF tick</B><BR/><FONT POINT-SIZE="14">FrameContext::frame(dt)</FONT>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
-  PAUSED [label=<<B>paused?</B>>, shape=diamond, style="filled", fillcolor="#ffffff", color="#3d4a5c", width=1.5, height=1.0, fontsize=15];
+  PAUSED [label=<<B>paused?</B>>, shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=1.6, height=1.05, fontsize=16];
 
   TICK [label=<<B>schedule</B><BR/><FONT POINT-SIZE="14">MusicEngine::tick → NoteEvents</FONT>>];
 

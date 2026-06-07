@@ -710,14 +710,14 @@ fn wire_pointerup(w: &InputWiring) {
                 }
             }
 
-            let amp = (1.40 + 0.95 * motion_n + 0.70 * travel_n).clamp(0.8, 2.8);
+            let amp = (1.05 + 0.70 * motion_n + 0.50 * travel_n).clamp(0.6, 2.1);
             w.queue_ripple([uvx, uvy], amp);
 
             {
                 let mut ms = w.mouse_state.borrow_mut();
-                ms.gesture_energy = ms.gesture_energy.max(0.95 + 0.45 * travel_n);
-                ms.gesture_flash = ms.gesture_flash.max(1.05 + 0.45 * motion_n);
-                ms.gesture_spin = (ms.gesture_spin + spin_accum * 0.42).clamp(-4.0, 4.0);
+                ms.gesture_energy = ms.gesture_energy.max(0.70 + 0.33 * travel_n);
+                ms.gesture_flash = ms.gesture_flash.max(0.78 + 0.33 * motion_n);
+                ms.gesture_spin = (ms.gesture_spin + spin_accum * 0.30).clamp(-4.0, 4.0);
             }
 
             log::info!(
@@ -754,13 +754,13 @@ fn wire_pointerup(w: &InputWiring) {
                 );
             }
 
-            w.queue_ripple([uvx, uvy], 1.95);
+            w.queue_ripple([uvx, uvy], 1.45);
             {
                 let mut ms = w.mouse_state.borrow_mut();
-                ms.gesture_energy = ms.gesture_energy.max(0.62);
-                ms.gesture_flash = ms.gesture_flash.max(0.72);
+                ms.gesture_energy = ms.gesture_energy.max(0.46);
+                ms.gesture_flash = ms.gesture_flash.max(0.54);
                 ms.gesture_spin =
-                    (ms.gesture_spin + ((uvx - 0.5) * (0.5 - uvy) * 1.8)).clamp(-4.0, 4.0);
+                    (ms.gesture_spin + ((uvx - 0.5) * (0.5 - uvy) * 1.2)).clamp(-4.0, 4.0);
             }
             log::info!("[gesture] flare uv=({:.2},{:.2})", uvx, uvy);
         }

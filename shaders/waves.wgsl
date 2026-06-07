@@ -29,9 +29,10 @@ struct WaveUniforms {
 // constant drift) so the pattern twirls one way, then the other. Tunable.
 const TWIRL_AMP: f32 = 1.5; // peak rotation, radians
 const TWIRL_FREQ: f32 = 0.4; // reversal rate; period = 2*pi/FREQ ~ 16 s
-// Pointer swirl reversal: the twist around the cursor oscillates direction
-// instead of always winding the same way.
-const SWIRL_TWIRL_FREQ: f32 = 2.0; // period = 2*pi/FREQ ~ 3 s
+// Pointer swirl: a persistent baseline twist around the cursor whose direction
+// oscillates slowly (sin), so it smoothly winds one way, then the other.
+const SWIRL_IDLE: f32 = 0.22; // baseline swirl strength (always present)
+const SWIRL_TWIRL_FREQ: f32 = 0.8; // reversal rate; period = 2*pi/FREQ ~ 8 s
 
 @vertex
 fn vs_fullscreen(@builtin(vertex_index) vid: u32) -> VsOut {
@@ -104,10 +105,10 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     let swirl_center = (u.swirl_uv - 0.5) * vec2<f32>(aspect, 1.0);
     let dv_swirl = p - swirl_center;
     let swirl_r = length(dv_swirl);
-    let swirl_ang =
-        u.swirl_active * u.swirl_strength * 2.35 * exp(-1.75 * swirl_r) * sin(t * SWIRL_TWIRL_FREQ);
+    let swirl_ang = u.swirl_active * (SWIRL_IDLE + u.swirl_strength) * 1.7
+        * exp(-1.75 * swirl_r) * sin(t * SWIRL_TWIRL_FREQ);
     p = swirl_center + rot(swirl_ang) * dv_swirl;
-    let swirl_pull = u.swirl_active * u.swirl_strength * 0.08 * exp(-3.0 * swirl_r);
+    let swirl_pull = u.swirl_active * u.swirl_strength * 0.06 * exp(-3.0 * swirl_r);
     p -= normalize(dv_swirl + vec2<f32>(1e-4, -1e-4)) * swirl_pull;
 
     // Kaleidoscope fold (12 sectors) produces a faceted look unlike wave fields.

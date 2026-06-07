@@ -8,7 +8,7 @@
 
 | Layer        | Choice                                  | Notes                                                            |
 | ------------ | --------------------------------------- | --------------------------------------------------------------- |
-| Language     | Rust (edition 2021)                     | ~20 small modules + 2 WGSL shaders, one crate (`app-web`)       |
+| Language     | Rust (edition 2021)                     | 19 modules + 2 WGSL shaders, one crate (`app-web`)       |
 | GPU          | `wgpu` 24 (WebGPU)                      | Fullscreen waves pass + bloom/composite; no WebGL fallback      |
 | Shaders      | WGSL                                    | `waves.wgsl` (scene), `post.wgsl` (bright-pass, blur, composite) |
 | Audio        | WebAudio via `web-sys`                  | Procedural synthesis + FX graph; no audio samples shipped       |
@@ -79,7 +79,7 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Deliberate `'static` at the browser boundary.** Objects the browser holds past setup are given a `'static` lifetime three ways, by intent: event-listener closures are `.forget()`-ed (dropping one would silently unregister the listener); the `requestAnimationFrame` callback is held in an `Rc<RefCell<Option<Closure>>>` that the loop re-references each frame, so it stays alive without leaking a fresh closure per frame; and the canvas handed to the WebGPU surface is `Box::leak`-ed once (`frame::init_gpu`) to satisfy the surface's `'static` bound. Each is a conscious one-time leak at the JS↔WASM seam, not an accident.
 
-**Display-synced canvas sizing.** A `resize` listener keeps the canvas backing buffer at its displayed size × `devicePixelRatio` (`dom::sync_canvas_backing_size`); `GpuState::resize_if_needed` reconfigures the surface and rebuilds the offscreen targets to match.
+**Display-synced canvas sizing.** A `resize` listener keeps the canvas backing buffer at its displayed size × `devicePixelRatio` (capped at 2×, `dom::sync_canvas_backing_size`); `GpuState::resize_if_needed` reconfigures the surface and rebuilds the offscreen targets to match.
 
 **Labeled GPU resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` (the `render/` modules and `render.rs`), so each is identifiable in browser GPU debuggers and validation messages.
 
@@ -135,7 +135,7 @@ Loud note onsets also queue a visual ripple, so the picture pulses with the musi
 - a **motif table** plus rotating **phrase root-shifts** pick the scale degree, with register, contour, octave offset, and a little micro-drift shaping the final MIDI pitch;
 - per-voice velocity/duration curves shape the envelope.
 
-Pitch is `midi_to_hz` (A4 = 440) with a global **detune in cents** (±200) applied before conversion. Scales are the seven diatonic modes plus a C-major pentatonic preset and three equal-division "alt-tuning" pentatonics (`8`/`9`/`0`). Reseeding a voice (`R`, gesture release, etc.) swaps its RNG for a fresh sequence. The engine is deterministic given a seed, which is what makes it unit-testable.
+Pitch is `midi_to_hz` (A4 = 440) with a global **detune in cents** (±200) applied before conversion. Scales are the seven diatonic modes plus a C-major pentatonic preset and three alt-tuning pentatonics — 19- and 31-TET (n-EDO-derived) and a quarter-tone 24-TET (`8`/`9`/`0`). Reseeding a voice (`R`, gesture release, etc.) swaps its RNG for a fresh sequence. The engine is deterministic given a seed, which is what makes it unit-testable.
 
 ## Visual Engine
 
@@ -162,7 +162,7 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 
 - `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, and the JS + wasm + `index.html` + `favicon.svg` are copied into `dist/`.
 - `worker.js` runs before asset serving (`run_worker_first`) and sets `Cache-Control`: the JS glue and wasm — both loaded with a `?v=<git-sha>` tag (`index.html` versions the wasm URL too) — are `immutable`, while the `env.js` version pointer and the HTML entry are `no-cache`, so a deploy is picked up immediately while the heavy assets cache forever.
-- `npm run dev` runs `wrangler dev` locally; `npx wrangler deploy` ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR and deploys to Cloudflare on `main` when the Cloudflare secrets are present.
+- `npm run dev` builds and serves locally; `npm run deploy` builds and ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR and deploys to Cloudflare on `main` when the Cloudflare secrets are present.
 
 ## What This Architecture Deliberately Does Not Include
 

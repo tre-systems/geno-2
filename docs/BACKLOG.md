@@ -20,7 +20,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 ## P3 — polish & housekeeping
 
 - **GPU timestamp profiling.** A debug-flagged `QuerySet` per pass so the performance work above is measured, not guessed.
-- **Post uniforms in one buffer with dynamic offsets** instead of 5 `write_buffer` calls/frame where only `blur_dir` changes. (`src/render.rs`, `src/render/post.rs`)
+- **Post uniforms in one buffer with dynamic offsets** instead of 4 `write_buffer` calls/frame where only `blur_dir` changes. (`src/render.rs`, `src/render/post.rs`)
 - **Proper bloom bright-pass downsample.** `fs_bright` point-samples full-res HDR into the half-res buffer; a 2×2 box tap removes shimmer on thin bright features. (`shaders/post.wgsl`)
 - **Drop `rand` / `getrandom` for an inline seeded PRNG.** The engine only uses `StdRng::seed_from_u64` (pure determinism), so a ~10-line PCG removes ~6 transitive crates and the dead JS-entropy shim — but it changes the generated sequences, so retune by ear. (`src/core/music.rs`)
 - **Lift the audio/music magic numbers into named constants** (filter cutoffs, gains, envelope shapes, gate/motif weights) — the *Patterns to Adopt* item in [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -29,5 +29,4 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 
 ## Constraints (intentional)
 
-- WebGPU only — no WebGL fallback.
-- Keep `src/core` host-testable: no `web-sys` there, so the generative engine and gesture geometry stay unit-testable with `cargo test`.
+WebGPU-only (no WebGL fallback) and a host-testable `src/core` (no `web-sys`) are deliberate design rules, not gaps to fill — see [AGENTS.md](../AGENTS.md).

@@ -25,11 +25,7 @@ It plays as **Lattice**: a geometric pulse instrument — sharp, polymetric rhyt
 
 ## Stack
 
-- Rust 2021
-- WebAssembly (`wasm-pack`)
-- WebGPU (`wgpu`, WGSL shaders)
-- WebAudio (procedural synthesis + FX graph)
-- Cloudflare Workers static hosting (`wrangler`)
+Rust + WebAssembly + WebGPU (`wgpu`) + WebAudio, built with `wasm-pack` and served from Cloudflare Workers. Full breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#stack).
 
 ## Controls
 
@@ -66,32 +62,14 @@ It plays as **Lattice**: a geometric pulse instrument — sharp, polymetric rhyt
 - [docs/diagrams/](docs/diagrams/) — system overview, frame loop, and audio graph.
 - [docs/BACKLOG.md](docs/BACKLOG.md) — ordered next work and known issues.
 
-## Local Development
+## Develop
 
-Requirements:
-
-- Node.js 20+
-- Rust stable
-- `wasm-pack`
-
-Commands:
+Requires Node.js 22, Rust stable, and `wasm-pack`.
 
 - `npm install`
-- `npm run dev`
-- `npm run check`
+- `npm run dev` — build and serve locally (needs a WebGPU-capable browser).
+- `npm run check` — the full gate: format, clippy, tests, diagram render, wasm build, and a Puppeteer smoke test. `npm run check:rust` is the fast inner loop.
 
-## Quality Gate
+## Deploy
 
-`npm run check` runs:
-
-- `cargo fmt --check`
-- `cargo clippy -- -D warnings`
-- `cargo test`
-- production wasm build
-- browser integration test (`web-test.js`)
-
-## Deployment
-
-- Build: `npm run build`
-- Deploy: `npm run deploy` (builds, then `wrangler deploy`)
-- CI deploys on `main` only when `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.
+`npm run deploy` builds and ships to Cloudflare Workers. CI also deploys on every push to `main` when `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are configured.

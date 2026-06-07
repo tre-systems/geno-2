@@ -300,6 +300,8 @@ async fn init() -> anyhow::Result<()> {
                 visual_swirl_strength: 0.0,
                 audio_visual_energy: 0.0,
                 last_audio_ripple_time: 0.0,
+                next_note_time: 0.0,
+                pending_visuals: Vec::new(),
             }));
             // Start RAF loop
             frame::start_loop(frame_ctx);

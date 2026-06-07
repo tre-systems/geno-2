@@ -183,6 +183,7 @@ pub fn trigger_one_shot(
     frequency: Frequency,
     velocity: f32,
     duration_sec: f64,
+    start_time: f64,
     voice_gain: &web::GainNode,
     delay_send: &web::GainNode,
     reverb_send: &web::GainNode,
@@ -201,7 +202,8 @@ pub fn trigger_one_shot(
 
     if let Ok(g) = web::GainNode::new(audio_ctx) {
         g.gain().set_value(0.0);
-        let t0 = audio_ctx.current_time() + 0.005;
+        // Honour the scheduled start time; never schedule in the past.
+        let t0 = start_time.max(audio_ctx.current_time() + 0.001);
         let (glide_mul, glide_time, chorus_detune) = match waveform {
             Waveform::Saw => (1.05, 0.14, 9.0),
             Waveform::Triangle => (0.97, 0.18, -7.0),

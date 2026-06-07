@@ -1,8 +1,8 @@
 use app_web::core::*;
 use std::time::Duration;
 
-fn make_engine() -> MusicEngine {
-    let configs = vec![
+fn test_configs() -> Vec<VoiceConfig> {
+    vec![
         VoiceConfig {
             waveform: Waveform::Sine,
             base_position: glam::Vec3::new(-1.0, 0.0, 0.0),
@@ -24,9 +24,15 @@ fn make_engine() -> MusicEngine {
             octave_offset: 1,
             base_duration: 0.6,
         },
-    ];
-    let params = EngineParams::default();
-    MusicEngine::new(configs, params, 42)
+    ]
+}
+
+fn engine_with_seed(seed: u64) -> MusicEngine {
+    MusicEngine::new(test_configs(), EngineParams::default(), seed)
+}
+
+fn make_engine() -> MusicEngine {
+    engine_with_seed(42)
 }
 
 #[test]
@@ -302,4 +308,116 @@ fn detune_round_trip_accuracy() {
             "detune of {detune}¢ should produce frequency for MIDI {adjusted_midi:.1}"
         );
     }
+}
+
+#[test]
+fn step_duration_matches_tempo() {
+    let mut e = make_engine();
+    e.set_bpm(Bpm::new(120.0));
+    // Eighth-note at 120 bpm = (60/120)/2 = 0.25 s.
+    assert!((e.step_duration() - 0.25).abs() < 1e-9);
+    e.set_bpm(Bpm::new(84.0));
+    assert!((e.step_duration() - (60.0 / 84.0 / 2.0)).abs() < 1e-9);
+}
+
+#[test]
+fn generate_step_stamps_start_time() {
+    let mut e = make_engine();
+    let step = e.step_duration();
+    // The default voices fire probabilistically, so advance until a step emits.
+    let mut t = 7.5;
+    let mut events = Vec::new();
+    loop {
+        events.clear();
+        e.generate_step(t, &mut events);
+        if !events.is_empty() {
+            break;
+        }
+        t += step;
+    }
+    for ev in &events {
+        assert_eq!(ev.start_time, t, "event not stamped with the step time");
+    }
+}
+
+#[test]
+fn lookahead_generates_ordered_on_grid_events() {
+    // Mirror the frame loop's lookahead: walk the grid and assert events land in
+    // time order, on the step grid.
+    let mut e = make_engine();
+    let step = e.step_duration();
+    let mut all = Vec::new();
+    let mut t = 0.0;
+    for _ in 0..96 {
+        e.generate_step(t, &mut all);
+        t += step;
+    }
+    assert!(!all.is_empty(), "engine produced no notes over 96 steps");
+    for pair in all.windows(2) {
+        assert!(
+            pair[1].start_time >= pair[0].start_time,
+            "events not in non-decreasing time order"
+        );
+    }
+    for ev in &all {
+        let k = (ev.start_time / step).round();
+        assert!(
+            (ev.start_time - k * step).abs() < 1e-6,
+            "start_time {} is off the step grid",
+            ev.start_time
+        );
+    }
+}
+
+#[test]
+fn engine_stream_is_deterministic_per_seed() {
+    // Same seed -> identical note stream. This determinism is what makes the
+    // generative engine unit-testable, so CI verifies the music, not just boot.
+    let render = |seed: u64| {
+        let mut e = engine_with_seed(seed);
+        let step = e.step_duration();
+        let mut evs = Vec::new();
+        let mut t = 0.0;
+        for _ in 0..240 {
+            e.generate_step(t, &mut evs);
+            t += step;
+        }
+        evs
+    };
+    let a = render(42);
+    let b = render(42);
+    assert_eq!(a.len(), b.len(), "same seed changed the note count");
+    for (x, y) in a.iter().zip(b.iter()) {
+        assert_eq!(x.voice_index, y.voice_index);
+        assert_eq!(x.frequency_hz.hz().to_bits(), y.frequency_hz.hz().to_bits());
+        assert_eq!(x.velocity.to_bits(), y.velocity.to_bits());
+        assert_eq!(x.duration_sec.to_bits(), y.duration_sec.to_bits());
+    }
+    let c = render(7);
+    let differs = a.len() != c.len()
+        || a.iter()
+            .zip(c.iter())
+            .any(|(x, y)| x.frequency_hz.hz().to_bits() != y.frequency_hz.hz().to_bits());
+    assert!(differs, "different seeds produced an identical stream");
+}
+
+#[test]
+fn engine_produces_music_at_a_sane_density() {
+    // Over ~10 s of musical time the engine should emit a healthy note stream —
+    // neither silence nor a runaway flood. This is the liveness assertion the
+    // headless browser test cannot make.
+    let mut e = make_engine();
+    let step = e.step_duration();
+    let steps = (10.0 / step).ceil() as usize;
+    let mut evs = Vec::new();
+    let mut t = 0.0;
+    for _ in 0..steps {
+        e.generate_step(t, &mut evs);
+        t += step;
+    }
+    let per_sec = evs.len() as f64 / 10.0;
+    assert!(
+        (1.0..60.0).contains(&per_sec),
+        "unexpected note density: {per_sec}/s"
+    );
 }

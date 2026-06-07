@@ -85,6 +85,8 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **FX graph built once, parameters written per frame.** `audio::build_fx_buses` and `wire_voices` construct the entire WebAudio node graph a single time at startup; the frame loop never adds or removes nodes, it only writes `AudioParam` values (wet levels, sends, panner positions, saturation drive). Per-note oscillators are the one exception — created and stopped per `NoteEvent` in `trigger_one_shot`.
 
+**Lookahead audio scheduling (two clocks).** The frame loop runs on `requestAnimationFrame` time but schedules notes against the independent `AudioContext` clock: each grid step is generated up to ~120 ms early (`MusicEngine::generate_step`) and its oscillator started at an exact future time (`audio::trigger_one_shot`), so frame jitter never smears note onsets. A small pending-visual queue replays each note's pulse when it actually sounds, so picture and sound stay locked despite the lead.
+
 **Errors bubble as `anyhow::Result`; `JsValue` only at the boundary.** The engine and setup code (`audio`, `render`, `wasm_app::init`) return `anyhow::Result`, attaching context as failures propagate; `JsValue` is confined to the `#[wasm_bindgen]` `start` surface and the DOM error overlay. A failed node-graph build surfaces its real cause in the console rather than a bare unit error.
 
 **Tuning constants for the visual/interaction layer.** The smoothing time-constants, the swirl spring, the FX-mapping weights, and the per-voice send curves live as named constants in `constants.rs` rather than scattered literals. This holds for the visual/interaction layer; the audio FX design (`audio.rs`) and the generative engine (`core/music.rs`) still tune with inline literals — see *Patterns to adopt*.
@@ -97,18 +99,19 @@ Patterns the codebase would benefit from but does not yet apply consistently:
 
 ## How a Frame Is Produced
 
-![Frame loop: update → render → trigger](diagrams/frame-loop.png)
+![Frame loop: schedule ahead → couple → render](diagrams/frame-loop.png)
 
 A single `requestAnimationFrame` callback (`FrameContext::frame`) runs three phases on the shared state:
 
-1. **Schedule** — unless paused, `MusicEngine::tick(dt)` advances the eighth-note grid and emits this frame's `NoteEvent`s. Each event bumps its voice's pulse energy.
+1. **Schedule ahead** — unless paused, the loop generates every grid step whose time falls within a ~120 ms lookahead window and starts each note's oscillator at its exact `AudioContext`-clock time (`MusicEngine::generate_step` → `audio::trigger_one_shot`), so onsets are sample-accurate rather than quantized to frame boundaries (the "two clocks" pattern). Each scheduled note also drops a pending visual onset stamped with the same time.
 2. **Couple state to audio + visuals** —
+   - drain the notes whose time has now arrived and bump their voices' pulse energy, so the picture pulses *with* what's audible rather than ~120 ms early;
    - smooth the per-voice pulse energies; decay gesture energy/flash/spin;
    - update the inertial **swirl** from the pointer (or multitouch centroid) — a damped spring in UV space;
    - modulate the **global FX** (reverb wet, delay wet/feedback, saturation drive/mix) from swirl energy, gesture flash, and pointer position;
    - push each voice's engine position into its `PannerNode`, and set its delay/reverb sends and level from distance;
    - align the `AudioListener` to the fixed camera.
-3. **Render + sound** — feed the ambient clear color, any queued ripple, and the smoothed swirl strength into `GpuState`, then `render()` (waves → bloom → composite). Finally, fire a one-shot oscillator voice for each scheduled `NoteEvent`.
+3. **Render** — feed the ambient clear color, any queued ripple, and the smoothed swirl strength into `GpuState`, then `render()` (waves → bloom → composite).
 
 Loud note onsets also queue a visual ripple, so the picture pulses with the music. State lives in the engine and the GPU between frames; the loop is a tail chain of rAF calls, not a timer.
 
@@ -167,7 +170,7 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 ## What This Architecture Deliberately Does Not Include
 
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it and shows a message rather than degrading.
-- **No AudioWorklet.** Note scheduling runs on the main thread via the rAF loop and WebAudio's own lookahead scheduling; sample-accurate timing via an AudioWorklet is a [backlog](BACKLOG.md) item.
+- **No AudioWorklet.** The rAF loop schedules notes ahead on the `AudioContext` clock (the two-clock lookahead — see *How a Frame Is Produced*), so onset timing is sample-accurate without a dedicated audio thread. An AudioWorklet would only be needed for custom per-sample DSP, which the graph does not do.
 - **No 3D scene / object picking.** Audio is spatialized through per-voice panners, but the voices are not interactive on-screen objects — the visuals are a screen-space shader.
 - **No server or persistence.** Everything runs client-side; there is no backend or saved state.
 - **No threads.** The WASM is single-threaded — no `SharedArrayBuffer`, so no cross-origin-isolation headers are needed.

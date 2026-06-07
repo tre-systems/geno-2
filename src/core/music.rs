@@ -97,6 +97,9 @@ pub struct NoteEvent {
     pub velocity: f32,
     /// Nominal duration in seconds (envelope length).
     pub duration_sec: f32,
+    /// Absolute start time on the playback clock, in seconds, stamped by the
+    /// caller of `generate_step`. The engine treats it as an opaque timestamp.
+    pub start_time: f64,
 }
 
 /// Mutable runtime state per voice.
@@ -185,6 +188,7 @@ pub struct MusicEngine {
     pub params: EngineParams,
     rngs: Vec<StdRng>,
     beat_accum: f64,
+    grid_time: f64,
     step_counter: u64,
 }
 
@@ -212,6 +216,7 @@ impl MusicEngine {
             params,
             rngs,
             beat_accum: 0.0,
+            grid_time: 0.0,
             step_counter: 0,
         }
     }
@@ -251,28 +256,34 @@ impl MusicEngine {
         }
     }
 
-    /// Advance the scheduler by `dt`, pushing any newly scheduled `NoteEvent`s into `out_events`.
+    /// Seconds per eighth-note grid step at the current tempo. `Bpm` guarantees a
+    /// finite, positive value, so this is always finite and `> 0`.
+    pub fn step_duration(&self) -> f64 {
+        (60.0 / self.params.bpm.get() as f64) / 2.0
+    }
+
+    /// Advance the scheduler by `dt` on the engine's own monotonic clock, pushing
+    /// any newly scheduled `NoteEvent`s into `out_events`. This is the
+    /// host-friendly driver (used by tests). The web frontend instead drives
+    /// [`generate_step`](Self::generate_step) directly with absolute audio-clock
+    /// times, so playback timing is sample-accurate rather than frame-quantized.
     pub fn tick(&mut self, dt: Duration, out_events: &mut Vec<NoteEvent>) {
-        let bpm = self.params.bpm.get() as f64;
-        if !bpm.is_finite() || bpm <= 0.0 {
-            return;
-        }
-        let step = (60.0 / bpm) / 2.0;
-        if !step.is_finite() || step <= 0.0 {
-            return;
-        }
+        let step = self.step_duration();
         self.beat_accum += dt.as_secs_f64();
         // Bound catch-up so a long stall (e.g. a backgrounded tab whose rAF was
         // throttled) doesn't dump a flood of notes when the loop resumes.
         self.beat_accum = self.beat_accum.min(step * MAX_CATCHUP_STEPS);
         while self.beat_accum >= step {
             self.beat_accum -= step;
-            self.schedule_step(out_events);
+            self.generate_step(self.grid_time, out_events);
+            self.grid_time += step;
         }
     }
 
-    /// Schedule a single grid step for all voices.
-    fn schedule_step(&mut self, out_events: &mut Vec<NoteEvent>) {
+    /// Generate one grid step for all voices, stamping each emitted `NoteEvent`
+    /// with `start_time` (an absolute time on the caller's playback clock). This
+    /// is the primitive the lookahead scheduler drives directly.
+    pub fn generate_step(&mut self, start_time: f64, out_events: &mut Vec<NoteEvent>) {
         let step = self.step_counter;
         self.step_counter = self.step_counter.wrapping_add(1);
         let phrase_idx = ((step / 6) as usize) % PHRASE_ROOT_SHIFTS.len();
@@ -358,6 +369,7 @@ impl MusicEngine {
                 frequency_hz: freq,
                 velocity: vel,
                 duration_sec: dur,
+                start_time,
             });
         }
     }

@@ -65,3 +65,13 @@ pub const BLOOM_THRESHOLD: f32 = 0.68;
 // Cap the canvas backing scale so high-DPR phones don't render the fullscreen
 // shader at 3x+ resolution (the dominant mobile GPU cost).
 pub const MAX_DEVICE_PIXEL_RATIO: f64 = 2.0;
+
+// Audio scheduler lookahead (the "two clocks" pattern): generate and schedule
+// notes this far ahead on the audio clock so their timing is sample-accurate and
+// independent of requestAnimationFrame jitter. ~120 ms absorbs frame drops
+// without audible drift.
+pub const SCHEDULE_AHEAD_SEC: f64 = 0.12;
+
+// Cap grid steps generated per frame so a resync after a long stall (a
+// backgrounded, rAF-throttled tab) can't dump a flood of notes at once.
+pub const MAX_SCHEDULE_STEPS_PER_FRAME: u32 = 8;

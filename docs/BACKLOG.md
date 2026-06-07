@@ -4,8 +4,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 
 ## P1 — correctness & confidence
 
-- **Sample-accurate audio scheduling.** Give `NoteEvent` an absolute start time on the audio clock and schedule a ~100–150 ms window ahead, instead of firing every note in a frame at `current_time() + 5 ms`. Today a slow frame collapses several eighth-notes onto one instant, and tempo rides the `requestAnimationFrame` jitter. This is the canonical "two clocks" lookahead pattern; an `AudioWorklet` is the heavier alternative if sample-accuracy is still short. (`src/audio.rs`, `src/frame.rs`, `src/core/music.rs`)
-- **Make CI actually exercise the engine.** `web-test.js` runs headless with `--disable-gpu`, so WebGPU is absent, the engine never starts, and every interaction/audio/perf assertion is silently skipped — "CI green" currently means "the overlay renders." Run a software WebGPU backend (SwiftShader / lavapipe) in CI, or keep moving deterministic logic into the host-testable `core` and unit-test it there.
+- **Exercise the render path and audio output in CI.** The browser smoke test runs with `--disable-gpu`, so `navigator.gpu` exposes no adapter, `GpuState` falls back to `None`, and neither the WebGPU render nor real frame timing ever run — the reported "60 fps" is hollow (empty rAF callbacks). Bring up a software WebGPU backend (SwiftShader via `--enable-unsafe-swift-shader`, or lavapipe) so render and true FPS are tested, and add an `AnalyserNode` RMS assertion so CI verifies the graph actually *sounds* (audio is checked today only by the absence of a thrown error). The engine's generative logic is already covered by host tests in `tests/music_tests.rs`. (`web-test.js`, `.github/workflows/ci.yml`)
 
 ## P2 — performance & robustness
 
@@ -15,7 +14,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 - **Integer-hash shaders.** The waves Voronoi uses `fract(sin(dot) * 43758)` (~18 `sin`/pixel) — it bands and is slow on Mali/Adreno/Apple GPUs; a PCG-style integer hash is the same look without transcendentals. (`shaders/waves.wgsl`, `shaders/post.wgsl`)
 - **Surface-loss recovery + texture-dimension clamp.** `render()` returns `SurfaceError` and the caller only logs it; handle `Lost`/`Outdated` by reconfiguring, and clamp the canvas backing size to the device `max_texture_dimension_2d` (the DPR cap covers the common case, not 5K+ displays). (`src/frame.rs`, `src/render.rs`, `src/dom.rs`)
 - **Dependency modernization.** Everything is ~a generation behind: **wgpu 24 → 29** (real API churn in `render.rs` — do on a branch), plus glam 0.27→0.33, rand 0.8→0.10, getrandom 0.2→0.4, and the wasm-bindgen / web-sys 0.3.77→0.3.99 family.
-- **Audio + cache-header test assertions.** An `AnalyserNode` RMS check (audio is currently verified only by the *absence* of a thrown error) and a `Cache-Control` assertion on the worker's `?v=` vs `env.js` responses (the cache logic is the riskiest deploy surface and is untested).
+- **Assert the cache headers.** A `Cache-Control` test on the worker's `?v=`-tagged assets vs the `env.js` / HTML entry — the immutable-vs-`no-cache` logic is the riskiest deploy surface and is untested. (`worker.js`)
 
 ## P3 — polish & housekeeping
 

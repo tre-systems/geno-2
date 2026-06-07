@@ -48,10 +48,10 @@ digraph FrameLoop {
 
   PAUSED [label=<<B>paused?</B>>, shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=1.6, height=1.05, fontsize=16];
 
-  TICK [label=<<B>schedule</B><BR/><FONT POINT-SIZE="14">MusicEngine::tick → NoteEvents</FONT>>];
+  TICK [label=<<B>schedule ahead</B><BR/><FONT POINT-SIZE="14">generate_step → start oscillators at audio-clock time</FONT>>];
 
   // ---- couple state ----
-  PULSE [label=<<B>smooth pulses</B><BR/><FONT POINT-SIZE="14">per-voice energy; decay gesture energy</FONT>>];
+  PULSE [label=<<B>couple sounded notes</B><BR/><FONT POINT-SIZE="14">drain just-played → pulse energy; decay gesture</FONT>>];
   SWIRL [label=<<B>update swirl</B><BR/><FONT POINT-SIZE="14">damped spring from pointer / centroid</FONT>>];
   FXMOD [label=<<B>modulate FX</B><BR/><FONT POINT-SIZE="14">reverb · delay · saturation</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
   SPAT [label=<<B>spatialize voices</B><BR/><FONT POINT-SIZE="14">positions → panners + sends + level</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
@@ -70,8 +70,6 @@ digraph FrameLoop {
     WAVES -> BLOOM -> COMPOSITE;
   }
 
-  TRIGGER [label=<<B>trigger voices</B><BR/><FONT POINT-SIZE="14">one-shot oscillator per NoteEvent</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-
   NEXT [label=<<B>schedule next frame</B>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
   // ---- flow ----
@@ -81,7 +79,6 @@ digraph FrameLoop {
   TICK -> PULSE;
   PULSE -> SWIRL -> FXMOD -> SPAT -> LISTENER;
   LISTENER -> WAVES [lhead=cluster_render];
-  COMPOSITE -> TRIGGER [ltail=cluster_render, label="if running", color="#6b7280", fontcolor="#6b7280", style=dashed];
-  TRIGGER -> NEXT;
+  COMPOSITE -> NEXT [ltail=cluster_render];
   NEXT -> START [label="next rAF", constraint=false, color="#6b7280", fontcolor="#6b7280", style=dashed];
 }

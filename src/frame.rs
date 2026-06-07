@@ -1,6 +1,6 @@
 use crate::audio;
 use crate::constants::*;
-use crate::core::{MusicEngine, Waveform};
+use crate::core::{MusicEngine, NoteEvent, Waveform};
 use crate::input;
 use crate::render;
 use glam::Vec3;
@@ -50,6 +50,20 @@ pub struct FrameContext<'a> {
     pub visual_swirl_strength: f32,
     pub audio_visual_energy: f32,
     pub last_audio_ripple_time: f64,
+
+    /// Next grid-step time on the audio clock — the lookahead scheduler's cursor.
+    pub next_note_time: f64,
+    /// Notes scheduled ahead but not yet sounded; drained as their time arrives
+    /// so the visuals couple to the audio (see `drain_played_visuals`).
+    pub pending_visuals: Vec<PendingVisual>,
+}
+
+/// A scheduled note's visual onset, applied when its audio-clock time arrives.
+#[derive(Clone, Copy)]
+pub struct PendingVisual {
+    pub time: f64,
+    pub voice: usize,
+    pub velocity: f32,
 }
 
 impl<'a> FrameContext<'a> {
@@ -60,29 +74,32 @@ impl<'a> FrameContext<'a> {
         let dt_sec = dt.as_secs_f32();
 
         let audio_time = self.audio_ctx.current_time();
-        let mut note_events = Vec::new();
+        // Schedule notes ahead on the audio clock (sample-accurate timing,
+        // decoupled from rAF jitter), then surface the notes that have just
+        // sounded so the visuals pulse in sync with what's audible.
         if !*self.paused.borrow() {
-            self.engine.borrow_mut().tick(dt, &mut note_events);
+            self.schedule_ahead(audio_time);
         }
+        let played = self.drain_played_visuals(audio_time);
 
         let pulses_copy: Vec<f32> = {
             let mut pulses_ref = self.pulses.borrow_mut();
             let n = pulses_ref.len().min(3);
-            for ev in &note_events {
-                if ev.voice_index < n {
-                    self.pulse_energy[ev.voice_index] =
-                        (self.pulse_energy[ev.voice_index] + ev.velocity as f32).min(1.8);
+            for ev in &played {
+                if ev.voice < n {
+                    self.pulse_energy[ev.voice] =
+                        (self.pulse_energy[ev.voice] + ev.velocity).min(1.8);
                 }
             }
             smooth_pulses(&mut pulses_ref, &mut self.pulse_energy, dt_sec);
             pulses_ref.clone()
         };
 
-        let note_transient = if note_events.is_empty() {
+        let note_transient = if played.is_empty() {
             0.0
         } else {
-            let sum: f32 = note_events.iter().map(|ev| ev.velocity as f32).sum();
-            (sum / note_events.len() as f32).clamp(0.0, 1.0)
+            let sum: f32 = played.iter().map(|ev| ev.velocity).sum();
+            (sum / played.len() as f32).clamp(0.0, 1.0)
         };
         let pulse_n = pulses_copy.len().min(3).max(1);
         let pulse_mean = pulses_copy.iter().take(pulse_n).copied().sum::<f32>() / pulse_n as f32;
@@ -260,27 +277,66 @@ impl<'a> FrameContext<'a> {
                 log::error!("render error: {:?}", e);
             }
         }
+    }
 
-        if !*self.paused.borrow() {
-            let waveforms: Vec<Waveform> = {
-                let engine_ref = self.engine.borrow();
-                engine_ref.configs.iter().map(|cfg| cfg.waveform).collect()
+    /// Generate and schedule every grid step within the lookahead window, firing
+    /// each note's oscillator at its precise audio-clock time and queueing its
+    /// visual onset. A resync when the cursor falls behind `audio_now` (first
+    /// frame, a stall, or resume after pause) plus a per-frame cap bound any
+    /// catch-up burst.
+    fn schedule_ahead(&mut self, audio_now: f64) {
+        if self.next_note_time < audio_now {
+            self.next_note_time = audio_now + 0.02;
+        }
+        let horizon = audio_now + SCHEDULE_AHEAD_SEC;
+        let waveforms: Vec<Waveform> = {
+            let eng = self.engine.borrow();
+            eng.configs.iter().map(|cfg| cfg.waveform).collect()
+        };
+        let mut scheduled: Vec<NoteEvent> = Vec::new();
+        let mut steps = 0u32;
+        while self.next_note_time < horizon && steps < MAX_SCHEDULE_STEPS_PER_FRAME {
+            let t = self.next_note_time;
+            scheduled.clear();
+            let step_dur = {
+                let mut eng = self.engine.borrow_mut();
+                eng.generate_step(t, &mut scheduled);
+                eng.step_duration()
             };
-
-            for ev in &note_events {
-                let wf = waveforms[ev.voice_index];
+            self.next_note_time = t + step_dur;
+            for ev in &scheduled {
                 audio::trigger_one_shot(
                     &self.audio_ctx,
-                    wf,
+                    waveforms[ev.voice_index],
                     ev.frequency_hz,
-                    ev.velocity as f32,
+                    ev.velocity,
                     ev.duration_sec as f64,
+                    ev.start_time,
                     &self.voice_gains[ev.voice_index],
                     &self.delay_sends[ev.voice_index],
                     &self.reverb_sends[ev.voice_index],
                 );
+                self.pending_visuals.push(PendingVisual {
+                    time: ev.start_time,
+                    voice: ev.voice_index,
+                    velocity: ev.velocity,
+                });
             }
+            steps += 1;
         }
+    }
+
+    /// Remove and return the scheduled notes whose audio-clock time has arrived,
+    /// so the frame couples visuals to notes as they actually sound.
+    fn drain_played_visuals(&mut self, audio_now: f64) -> Vec<PendingVisual> {
+        let played: Vec<PendingVisual> = self
+            .pending_visuals
+            .iter()
+            .copied()
+            .filter(|p| p.time <= audio_now)
+            .collect();
+        self.pending_visuals.retain(|p| p.time > audio_now);
+        played
     }
 
     fn update_swirl(

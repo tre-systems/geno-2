@@ -1,7 +1,7 @@
 use crate::audio;
 use crate::core::{
-    Bpm, Cents, MidiNote, MusicEngine, AEOLIAN, C_MAJOR_PENTATONIC, DORIAN, IONIAN, LOCRIAN,
-    LYDIAN, MIXOLYDIAN, PHRYGIAN, TET19_PENTATONIC, TET24_PENTATONIC, TET31_PENTATONIC,
+    Bpm, Cents, MidiNote, MusicEngine, AEOLIAN, DORIAN, IONIAN, LOCRIAN, LYDIAN, MIXOLYDIAN,
+    PHRYGIAN,
 };
 use crate::input;
 use crate::input::TouchGestureKind;
@@ -695,6 +695,7 @@ fn wire_pointerup(w: &InputWiring) {
                     freq,
                     vel,
                     dur,
+                    w.audio_ctx.current_time(),
                     &w.voice_gains[vi],
                     &w.delay_sends[vi],
                     &w.reverb_sends[vi],
@@ -744,6 +745,7 @@ fn wire_pointerup(w: &InputWiring) {
                     freq,
                     vel,
                     dur,
+                    w.audio_ctx.current_time(),
                     &w.voice_gains[vi],
                     &w.delay_sends[vi],
                     &w.reverb_sends[vi],

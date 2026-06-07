@@ -1,7 +1,6 @@
 use crate::core::{Bpm, Cents, MusicEngine};
 use crate::core::{
     AEOLIAN, C_MAJOR_PENTATONIC, DORIAN, IONIAN, LOCRIAN, LYDIAN, MIXOLYDIAN, PHRYGIAN,
-    TET19_PENTATONIC, TET24_PENTATONIC, TET31_PENTATONIC,
 };
 use crate::events::keymap::{mode_scale_for_digit, root_midi_for_key};
 use crate::overlay;

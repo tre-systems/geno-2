@@ -93,5 +93,5 @@ Commands:
 ## Deployment
 
 - Build: `npm run build`
-- Deploy: `npx --yes wrangler deploy`
+- Deploy: `npm run deploy` (builds, then `wrangler deploy`)
 - CI deploys on `main` only when `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.

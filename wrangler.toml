@@ -18,9 +18,6 @@ ENVIRONMENT = "production"
 pattern = "geno-2.tre.systems/*"
 zone_name = "tre.systems"
 
-[build]
-command = "npm run build"
-
 [dev]
 port = 8787
 local_protocol = "http"

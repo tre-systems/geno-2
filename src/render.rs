@@ -275,6 +275,13 @@ impl<'a> GpuState<'a> {
         }
     }
 
+    /// Re-apply the surface configuration after the swapchain is lost or outdated
+    /// (GPU reset, tab restore). The offscreen targets and bind groups don't
+    /// depend on the swapchain, so only the surface needs reconfiguring.
+    pub fn reconfigure(&mut self) {
+        self.surface.configure(&self.device, &self.config);
+    }
+
     pub fn render(
         &mut self,
         dt_sec: f32,

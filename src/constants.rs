@@ -80,3 +80,8 @@ pub const MAX_SCHEDULE_STEPS_PER_FRAME: u32 = 8;
 // (FX wet/feedback, sends, voice gains, panner positions) — removes the zipper
 // noise from set_value steps without feeling sluggish.
 pub const AUDIO_SMOOTH_SEC: f64 = 0.03;
+
+// Clamp the canvas backing size to wgpu's default max_texture_dimension_2d so a
+// 5K+ display (even after the DPR cap) can't request a surface/texture the GPU
+// rejects. Matches the Limits::default() requested in render.rs.
+pub const MAX_TEXTURE_DIM: u32 = 8192;

@@ -27,9 +27,12 @@ pub fn sync_canvas_backing_size(canvas: &web::HtmlCanvasElement) {
             .min(crate::constants::MAX_DEVICE_PIXEL_RATIO);
         let el: web::Element = canvas.clone().unchecked_into();
         let rect = el.get_bounding_client_rect();
-        let w_px = (rect.width() * dpr) as u32;
-        let h_px = (rect.height() * dpr) as u32;
-        canvas.set_width(w_px.max(1));
-        canvas.set_height(h_px.max(1));
+        // Clamp to the GPU's max texture dimension so a 5K+ display (even after
+        // the DPR cap) can't request a surface/texture the GPU will reject.
+        let max = crate::constants::MAX_TEXTURE_DIM;
+        let w_px = ((rect.width() * dpr) as u32).clamp(1, max);
+        let h_px = ((rect.height() * dpr) as u32).clamp(1, max);
+        canvas.set_width(w_px);
+        canvas.set_height(h_px);
     }
 }

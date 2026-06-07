@@ -286,8 +286,13 @@ impl<'a> FrameContext<'a> {
                 pulses_ref.clone()
             };
 
-            if let Err(e) = g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot) {
-                log::error!("render error: {:?}", e);
+            match g.render(dt_sec, &self.visual_voice_positions, &pulse_energy_snapshot) {
+                Ok(()) => {}
+                // Swapchain lost/outdated (GPU reset, tab restore): reconfigure and
+                // pick up the next frame rather than freezing on a stale surface.
+                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => g.reconfigure(),
+                Err(wgpu::SurfaceError::Timeout) => {}
+                Err(e) => log::error!("render error: {:?}", e),
             }
         }
     }

@@ -12,6 +12,7 @@ Ordered, honest next work. No status history — see git for what changed.
 - Optional `AudioWorklet` path for sample-accurate scheduling (currently main-thread + WebAudio lookahead).
 - Cap polyphony / pool oscillators — `trigger_one_shot` creates a fresh oscillator pair per note; audit node lifetimes under sustained play.
 - Per-voice filtering and configurable ADSR.
+- Lift the FX design's inline constants (filter cutoffs, gains, envelope shapes) into named constants — see *Patterns to Adopt* in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Engine
 

@@ -69,17 +69,30 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Procedural everything (no assets).** The reverb impulse response is generated at runtime (seeded xorshift noise × an exponential decay envelope), the saturation curve is an arctan lookup table, and each voice's timbre is an oscillator plus a slightly detuned chorus oscillator. Nothing but code and shaders ships.
 
-**POD uniforms mirrored Rust ↔ WGSL.** `WavesUniforms` and `PostUniforms` are `#[repr(C)]` + `bytemuck::Pod`, byte-compatible with their WGSL `struct` counterparts, so they `bytes_of` straight into uniform buffers with no serialization. The Rust and WGSL definitions are one contract and change together.
+**POD uniforms mirrored Rust ↔ WGSL, guarded at compile time.** `WavesUniforms`, `VoicePacked`, and `PostUniforms` are `#[repr(C)]` + `bytemuck::Pod`, byte-compatible with their WGSL `struct` counterparts, so they `bytes_of` straight into uniform buffers with no serialization. The Rust and WGSL definitions are one contract and change together — a `const _: () = assert!(size_of::<…>() == N)` next to each struct fails the build if a field is added or reordered without updating the matching shader.
 
 **Fullscreen-triangle passes.** The waves pass and every post step are a single oversized triangle (`draw(0..3, 0..1)`, no vertex buffer) — the standard cheaper-than-a-quad fullscreen idiom.
 
 **Compile-time-embedded shaders.** WGSL is pulled in with `include_str!` (`core::WAVES_WGSL` / `POST_WGSL`), so the shaders are compiled into the WASM — no runtime fetch, no separate asset to deploy.
 
-**Retained closures keep listeners alive.** Each `add_event_listener` closure is `.forget()`-ed so it is not dropped at the end of setup — dropping it would silently unregister the listener.
+**Deliberate `'static` at the browser boundary.** Objects the browser holds past setup are given a `'static` lifetime three ways, by intent: event-listener closures are `.forget()`-ed (dropping one would silently unregister the listener); the `requestAnimationFrame` callback is held in an `Rc<RefCell<Option<Closure>>>` that the loop re-references each frame, so it stays alive without leaking a fresh closure per frame; and the canvas handed to the WebGPU surface is `Box::leak`-ed once (`frame::init_gpu`) to satisfy the surface's `'static` bound. Each is a conscious one-time leak at the JS↔WASM seam, not an accident.
 
 **Display-synced canvas sizing.** A `resize` listener keeps the canvas backing buffer at its displayed size × `devicePixelRatio` (`dom::sync_canvas_backing_size`); `GpuState::resize_if_needed` reconfigures the surface and rebuilds the offscreen targets to match.
 
-**Constants over magic numbers.** Smoothing time-constants, the swirl spring, the FX-mapping weights, and the per-voice send curves live in `constants.rs`, expressed as named behavior rather than scattered literals.
+**Labeled GPU resources.** Every buffer, pipeline, bind group, pass, and texture carries a `label: Some(...)` (the `render/` modules and `render.rs`), so each is identifiable in browser GPU debuggers and validation messages.
+
+**FX graph built once, parameters written per frame.** `audio::build_fx_buses` and `wire_voices` construct the entire WebAudio node graph a single time at startup; the frame loop never adds or removes nodes, it only writes `AudioParam` values (wet levels, sends, panner positions, saturation drive). Per-note oscillators are the one exception — created and stopped per `NoteEvent` in `trigger_one_shot`.
+
+**Errors bubble as `anyhow::Result`; `JsValue` only at the boundary.** The engine and setup code (`audio`, `render`, `wasm_app::init`) return `anyhow::Result`, attaching context as failures propagate; `JsValue` is confined to the `#[wasm_bindgen]` `start` surface and the DOM error overlay. A failed node-graph build surfaces its real cause in the console rather than a bare unit error.
+
+**Tuning constants for the visual/interaction layer.** The smoothing time-constants, the swirl spring, the FX-mapping weights, and the per-voice send curves live as named constants in `constants.rs` rather than scattered literals. This holds for the visual/interaction layer; the audio FX design (`audio.rs`) and the generative engine (`core/music.rs`) still tune with inline literals — see *Patterns to adopt*.
+
+## Patterns to Adopt
+
+Patterns the codebase would benefit from but does not yet apply consistently:
+
+- **Domain newtypes.** Pitches, tempos, and detune are passed as raw `f32`/`i32` everywhere, so nothing stops a MIDI number being used as a frequency or a BPM. `MidiNote`, `Frequency`, `Cents`, and `BPM` newtypes (with range validation) would make those mistakes unrepresentable. The conversion-heavy `core/music.rs` is where this would pay off most.
+- **Extend the constants pattern to audio.** `audio.rs` and `core/music.rs` carry the bulk of the project's magic numbers (filter cutoffs, gains, envelope shapes, gate/motif weights) inline. Lifting the audio FX design and the generative tuning into named constants — the way `constants.rs` already does for the visuals — would make the sound design legible and tweakable in one place.
 
 ## How a Frame Is Produced
 

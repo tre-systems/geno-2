@@ -1,0 +1,106 @@
+digraph NetworkedControl {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.55",
+    ranksep="0.9",
+    splines=polyline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>Geno-2 — Networked Control</B></FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="15" COLOR="#54607a">Only control crosses the network — never audio or video. Each display client renders locally.</FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.21,0.13",
+    width=3.05,
+    height=0.74,
+    fixedsize=false,
+    fontname="Avenir",
+    fontsize=18,
+    penwidth=2.4,
+    fontcolor="#14213d",
+    color="#2264c7",
+    fillcolor="#eaf3ff:#ffffff",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=13,
+    fontcolor="#3d4a5c",
+    penwidth=2.2,
+    arrowsize=0.78
+  ];
+
+  // ---- Performer panel ----
+  subgraph cluster_performer {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1f5fbf"><B>PERFORMER PANEL</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#496f9f">A browser page that only sends — it holds no engine of its own.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    P1 [label=<<B>control.html</B>  ·  /control<BR/><FONT POINT-SIZE="15">tempo · detune · root · scale · seed · volume · pause</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+  }
+
+  // ---- Relay ----
+  subgraph cluster_relay {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#0f766e"><B>RELAY (CLOUDFLARE)</B></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#357a74">worker.js routes /room/&lt;id&gt; WebSocket upgrades to a Room Durable Object. scripts/relay.mjs is the local-dev equivalent.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    R1 [label=<<B>Room Durable Object</B><BR/><FONT POINT-SIZE="15">hibernatable WebSockets · fan-out to every peer</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+    STORE [label=<<B>durable storage</B><BR/><FONT POINT-SIZE="15">accumulated params</FONT>>, shape=cylinder, fillcolor="#e6fffb:#ffffff", color="#0f766e", width=2.0, height=0.9];
+    R1 -> STORE [dir=both, label="persist / restore", minlen=1];
+  }
+
+  // ---- Display clients ----
+  subgraph cluster_display {
+    graph [
+      label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="17" COLOR="#1e6b43"><B>DISPLAY CLIENTS</B>  <FONT COLOR="#6b7280">(?mode=display — one per screen)</FONT></FONT></TD></TR>
+          <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="12" COLOR="#4e7a61">Each client applies broadcast params to its own live engine and renders independently. Audio + video never leave the device.</FONT></TD></TR>
+        </TABLE>
+      >,
+      labelloc=t, labeljust=l,
+      color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
+    ];
+    D1 [label=<<B>?mode=display client</B><BR/><FONT POINT-SIZE="15">index.html · auto-reconnect WS · tap to start</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    D2 [label=<<B>live MusicEngine</B><BR/><FONT POINT-SIZE="15">control_set_* · reseed_all · scale_for_name</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    D3 [label=<<B>local speakers + &lt;canvas&gt;</B><BR/><FONT POINT-SIZE="15">own WebAudio + WebGPU, rendered on-device</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+    DMORE [label=<<B>…more display clients</B><BR/><FONT POINT-SIZE="15">each renders independently</FONT>>, fillcolor="#f3f6fb:#ffffff", color="#9aa6b8", fontcolor="#6b7280", style="rounded,filled,dashed"];
+
+    D1 -> D2 [label="apply k → setter"];
+    D2 -> D3 [label="sound + picture"];
+  }
+
+  // ---- Cross-cluster edges ----
+  P1 -> R1 [lhead=cluster_relay, label=<<B>{t:"set",k,v}</B><BR/>over WebSocket>];
+  R1 -> D1 [ltail=cluster_relay, label=<broadcast <B>{t:"set"}</B><BR/>+ replay state on join>];
+  R1 -> DMORE [label="broadcast", color="#6b7280", fontcolor="#6b7280", style=dashed];
+}

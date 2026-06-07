@@ -174,6 +174,8 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 
 ## Networked Control
 
+![Networked control: performer panel → relay → display clients](diagrams/networked-control.png)
+
 The instrument can be driven remotely: a performer panel sends parameter changes over a WebSocket relay to display clients that render locally — *control* crosses the network, not audio or video, and each client renders from the shared state (e.g. a laptop driving an iPad, or an audience rendering locally).
 
 - **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.

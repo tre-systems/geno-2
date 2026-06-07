@@ -51,7 +51,7 @@ web-sys = { version = "0.3", features = [
 wgpu = { version = "24.0", features = ["webgpu"] }
 glam = "0.27"
 bytemuck = { version = "1.16", features = ["derive"] }
-instant = "0.1"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 

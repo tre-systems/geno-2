@@ -64,7 +64,7 @@ Rust + WebAssembly + WebGPU (`wgpu`) + WebAudio, built with `wasm-pack` and serv
 
 ## Develop
 
-Requires Node.js 22, Rust stable, and `wasm-pack`.
+Requires Node.js 22 and Rust stable; `npm install` pulls in `wasm-pack`.
 
 - `npm install`
 - `npm run dev` — build and serve locally (needs a WebGPU-capable browser).

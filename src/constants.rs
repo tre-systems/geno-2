@@ -85,3 +85,7 @@ pub const AUDIO_SMOOTH_SEC: f64 = 0.03;
 // 5K+ display (even after the DPR cap) can't request a surface/texture the GPU
 // rejects. Matches the Limits::default() requested in render.rs.
 pub const MAX_TEXTURE_DIM: u32 = 8192;
+
+// Cap on simultaneously-sounding one-shot voices, so a frantic gesture burst
+// can't spawn unbounded oscillators. Generous — normal play stays well under it.
+pub const MAX_POLYPHONY: usize = 48;

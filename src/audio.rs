@@ -176,6 +176,11 @@ pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> 
     })
 }
 
+thread_local! {
+    /// End times (audio clock) of in-flight one-shot voices, for the polyphony cap.
+    static ACTIVE_VOICE_ENDS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+}
+
 // Fire a simple one-shot oscillator routed through a voice's gain and sends
 pub fn trigger_one_shot(
     audio_ctx: &web::AudioContext,
@@ -188,6 +193,17 @@ pub fn trigger_one_shot(
     delay_send: &web::GainNode,
     reverb_send: &web::GainNode,
 ) {
+    // Polyphony cap: prune voices that have finished, then drop this note if
+    // we're maxed out — a frantic gesture burst can't spawn unbounded oscillators.
+    let now = audio_ctx.current_time();
+    let at_cap = ACTIVE_VOICE_ENDS.with(|ends| {
+        let mut ends = ends.borrow_mut();
+        ends.retain(|&end| end > now);
+        ends.len() >= crate::constants::MAX_POLYPHONY
+    });
+    if at_cap {
+        return;
+    }
     let frequency_hz = frequency.hz();
     let src_main = match web::OscillatorNode::new(audio_ctx) {
         Ok(s) => s,
@@ -243,6 +259,7 @@ pub fn trigger_one_shot(
         };
         let sustain_t = (t0 + duration_sec * 0.68).min(t0 + duration_sec - 0.03);
         let end_t = t0 + duration_sec + release_tail;
+        ACTIVE_VOICE_ENDS.with(|ends| ends.borrow_mut().push(end_t + 0.06));
 
         _ = g.gain().set_value_at_time(0.0001, t0);
         _ = g

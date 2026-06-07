@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rgilks/geno-2.git"
+    "url": "git+https://github.com/tre-systems/geno-2.git"
   },
   "keywords": [
     "generative-art",
@@ -33,9 +33,9 @@
   "license": "MIT",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/rgilks/geno-2/issues"
+    "url": "https://github.com/tre-systems/geno-2/issues"
   },
-  "homepage": "https://github.com/rgilks/geno-2#readme",
+  "homepage": "https://github.com/tre-systems/geno-2#readme",
   "devDependencies": {
     "wrangler": "^4.28.1",
     "http-server": "^14.1.1",

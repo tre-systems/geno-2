@@ -4,7 +4,7 @@ version = "1.2.0"
 edition = "2021"
 license = "MIT"
 description = "Geno-2 audiovisual engine (Rust/WASM/WebGPU/WebAudio)"
-repository = "https://github.com/rgilks/geno-2"
+repository = "https://github.com/tre-systems/geno-2"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

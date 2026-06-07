@@ -5,7 +5,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?style=for-the-badge&logo=webassembly&logoColor=white)
 ![WebGPU](https://img.shields.io/badge/WebGPU-005A9C?style=for-the-badge&logo=gpu&logoColor=white)
-[![CI](https://github.com/rgilks/geno-2/actions/workflows/ci.yml/badge.svg)](https://github.com/rgilks/geno-2/actions/workflows/ci.yml)
+[![CI](https://github.com/tre-systems/geno-2/actions/workflows/ci.yml/badge.svg)](https://github.com/tre-systems/geno-2/actions/workflows/ci.yml)
 
 </div>
 

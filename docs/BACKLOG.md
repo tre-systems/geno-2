@@ -29,4 +29,4 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 
 ## Constraints (intentional)
 
-WebGPU-only (no WebGL fallback) and a host-testable `src/core` (no `web-sys`) are deliberate design rules, not gaps to fill — see [AGENTS.md](../AGENTS.md).
+See [AGENTS.md](../AGENTS.md) for the project's intentional constraints — deliberate design rules, not gaps to fill here.

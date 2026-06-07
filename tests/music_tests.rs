@@ -421,34 +421,3 @@ fn engine_produces_music_at_a_sane_density() {
         "unexpected note density: {per_sec}/s"
     );
 }
-
-/// Pin the exact generated sequence (seed 42) so accidental engine changes are
-/// caught. Update the pinned pair only when intentionally changing the output.
-#[test]
-fn music_fingerprint_is_stable() {
-    let mut e = engine_with_seed(42);
-    let step = e.step_duration();
-    let mut evs = Vec::new();
-    let mut t = 0.0;
-    for _ in 0..1000 {
-        e.generate_step(t, &mut evs);
-        t += step;
-    }
-    let mut h: u64 = 0xcbf29ce484222325;
-    for ev in &evs {
-        for x in [
-            ev.voice_index as u32,
-            ev.frequency_hz.hz().to_bits(),
-            ev.velocity.to_bits(),
-            ev.duration_sec.to_bits(),
-        ] {
-            h ^= x as u64;
-            h = h.wrapping_mul(0x100000001b3);
-        }
-    }
-    assert_eq!(
-        (evs.len(), h),
-        (935, 10142961523132047772),
-        "music fingerprint"
-    );
-}

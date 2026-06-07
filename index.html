@@ -273,6 +273,24 @@
           align-items: center;
         }
       }
+      .display-mode #start-overlay,
+      .display-mode #hint-overlay {
+        display: none !important;
+      }
+      #display-start {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        color: #f3e8d8;
+        font: 600 18px/1 system-ui;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        background: rgba(12, 10, 18, 0.5);
+        cursor: pointer;
+      }
     </style>
     <script type="importmap">
       {
@@ -517,8 +535,80 @@
           new URL(`./pkg/app_web.js?v=${v}`, window.location.href).toString()
         );
         // Version the wasm URL too so each deploy's wasm can be cached immutably (see worker.js).
-        return m.default({ module_or_path: `./pkg/app_web_bg.wasm?v=${v}` });
+        return m.default({ module_or_path: `./pkg/app_web_bg.wasm?v=${v}` }).then(() => {
+          window.__geno = m;
+          const params = new URLSearchParams(location.search);
+          if (params.get("mode") === "display") setupDisplay(m, params);
+        });
       });
+
+      // Display mode: a render-only client driven by the performance relay. It
+      // hides the UI, applies broadcast parameters to the live engine, and
+      // starts audio on one tap (iOS autoplay). See control.html + scripts/relay.mjs.
+      function setupDisplay(m, params) {
+        document.documentElement.classList.add("display-mode");
+        const room = params.get("room") || "main";
+        const relay =
+          params.get("relay") ||
+          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+        const url = `${relay.replace(/\/$/, "")}/room/${encodeURIComponent(room)}`;
+
+        let last = {};
+        const apply = (k, val) => {
+          switch (k) {
+            case "bpm": m.control_set_bpm(+val); break;
+            case "detune": m.control_set_detune(+val); break;
+            case "root": m.control_set_root(+val); break;
+            case "scale": m.control_set_scale(String(val)); break;
+            case "seed": m.control_set_seed(+val >>> 0); break;
+            case "paused": m.control_set_paused(!!val); break;
+            case "volume": m.control_set_volume(+val); break;
+          }
+        };
+        const applyAll = (s) => {
+          for (const k in s) apply(k, s[k]);
+        };
+
+        const connect = () => {
+          const ws = new WebSocket(url);
+          ws.onopen = () => console.log("[display] connected", url);
+          ws.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.t === "state") {
+              last = msg.state || {};
+              applyAll(last);
+            } else if (msg.t === "set") {
+              last[msg.k] = msg.v;
+              apply(msg.k, msg.v);
+            }
+          };
+          ws.onclose = () => setTimeout(connect, 1500);
+          ws.onerror = () => ws.close();
+        };
+        connect();
+
+        // wasm init via start() can lag default(); re-apply once ready.
+        const whenReady = () => {
+          if (m.control_ready && m.control_ready()) applyAll(last);
+          else setTimeout(whenReady, 100);
+        };
+        whenReady();
+
+        const startEl = document.createElement("div");
+        startEl.id = "display-start";
+        startEl.textContent = "tap to start";
+        document.body.appendChild(startEl);
+        window.addEventListener(
+          "pointerdown",
+          () => {
+            if (m.control_start) m.control_start();
+            const c = document.getElementById("app-canvas");
+            if (c && c.requestFullscreen) c.requestFullscreen().catch(() => {});
+            startEl.remove();
+          },
+          { once: true },
+        );
+      }
     </script>
   </body>
 </html>

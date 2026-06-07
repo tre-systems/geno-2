@@ -9,6 +9,7 @@
     "test": "node web-test.js",
     "relay": "node scripts/relay.mjs",
     "relay:test": "node scripts/relay-test.mjs",
+    "display:test": "node scripts/display-test.mjs",
     "ci": "npm run build && (http-server -p 8080 -c-1 . >/dev/null 2>&1 & SERVER_PID=$!; trap 'kill $SERVER_PID 2>/dev/null || true' EXIT; node web-test.js)",
     "clean": "cargo clean && rm -rf pkg",
     "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --all-targets",

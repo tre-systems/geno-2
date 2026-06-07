@@ -171,6 +171,24 @@ pub fn scale_name(scale: &[f32]) -> &'static str {
     }
 }
 
+/// Inverse of [`scale_name`]: map a display name back to a scale constant.
+pub fn scale_for_name(name: &str) -> Option<&'static [f32]> {
+    Some(match name {
+        "Ionian (major)" => IONIAN,
+        "Dorian" => DORIAN,
+        "Phrygian" => PHRYGIAN,
+        "Lydian" => LYDIAN,
+        "Mixolydian" => MIXOLYDIAN,
+        "Aeolian (minor)" => AEOLIAN,
+        "Locrian" => LOCRIAN,
+        "C Major Pentatonic" => C_MAJOR_PENTATONIC,
+        "19-TET pentatonic" => TET19_PENTATONIC,
+        "24-TET pentatonic" => TET24_PENTATONIC,
+        "31-TET pentatonic" => TET31_PENTATONIC,
+        _ => return None,
+    })
+}
+
 /// Random generative scheduler producing `NoteEvent`s on an eighth-note grid.
 ///
 /// The engine maintains per-voice state and RNGs. On each tick, it advances an
@@ -253,6 +271,16 @@ impl MusicEngine {
         if let Some(r) = self.rngs.get_mut(voice_index) {
             let new_seed = seed.unwrap_or_else(|| r.gen());
             *r = StdRng::seed_from_u64(new_seed);
+        }
+    }
+
+    /// Reseed every voice deterministically from one base seed, using the same
+    /// per-voice derivation as [`MusicEngine::new`] — so `reseed_all(s)` yields
+    /// the identical sequence to constructing the engine with seed `s`.
+    pub fn reseed_all(&mut self, seed: u64) {
+        for (i, r) in self.rngs.iter_mut().enumerate() {
+            let mix = seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            *r = StdRng::seed_from_u64(mix);
         }
     }
 

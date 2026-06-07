@@ -164,6 +164,12 @@ async fn init() -> anyhow::Result<()> {
                 }
             };
             let master_gain = fx.master_gain.clone();
+            crate::control::install(
+                engine.clone(),
+                paused.clone(),
+                master_gain.clone(),
+                audio_ctx.clone(),
+            );
             let sat_pre = fx.sat_pre.clone();
             let sat_wet = fx.sat_wet.clone();
             let sat_dry = fx.sat_dry.clone();

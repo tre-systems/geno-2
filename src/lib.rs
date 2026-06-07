@@ -8,6 +8,8 @@ mod audio;
 #[cfg(target_arch = "wasm32")]
 mod constants;
 #[cfg(target_arch = "wasm32")]
+mod control;
+#[cfg(target_arch = "wasm32")]
 mod dom;
 #[cfg(target_arch = "wasm32")]
 mod frame;

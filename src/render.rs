@@ -66,7 +66,8 @@ impl<'a> GpuState<'a> {
         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                // Long-running ambient toy: prefer the integrated GPU to save battery.
+                power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })

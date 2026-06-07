@@ -1,6 +1,7 @@
 pub mod core;
 pub mod events;
 pub mod input;
+pub mod instrument;
 
 #[cfg(target_arch = "wasm32")]
 mod audio;
@@ -15,7 +16,11 @@ mod overlay;
 #[cfg(target_arch = "wasm32")]
 mod render;
 #[cfg(target_arch = "wasm32")]
+mod offline;
+#[cfg(target_arch = "wasm32")]
 mod wasm_app;
 
+#[cfg(target_arch = "wasm32")]
+pub use offline::render_audio_wav;
 #[cfg(target_arch = "wasm32")]
 pub use wasm_app::start;

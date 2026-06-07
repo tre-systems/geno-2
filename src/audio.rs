@@ -37,7 +37,7 @@ fn osc_type(waveform: Waveform) -> web::OscillatorType {
 }
 
 fn create_gain(
-    audio_ctx: &web::AudioContext,
+    audio_ctx: &web::BaseAudioContext,
     value: f32,
     label: &str,
 ) -> anyhow::Result<web::GainNode> {
@@ -47,7 +47,7 @@ fn create_gain(
     Ok(g)
 }
 
-pub fn build_fx_buses(audio_ctx: &web::AudioContext) -> anyhow::Result<FxBuses> {
+pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBuses> {
     // Master gain
     let master_gain = create_gain(audio_ctx, 0.46, "Master")?;
 
@@ -181,9 +181,16 @@ thread_local! {
     static ACTIVE_VOICE_ENDS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Clear the in-flight one-shot voice pool. Call before an offline render so a
+/// previous run's (realtime-clock) end times don't trip the polyphony cap.
+pub fn reset_voice_pool() {
+    ACTIVE_VOICE_ENDS.with(|ends| ends.borrow_mut().clear());
+}
+
 // Fire a simple one-shot oscillator routed through a voice's gain and sends
 pub fn trigger_one_shot(
-    audio_ctx: &web::AudioContext,
+    audio_ctx: &web::BaseAudioContext,
+    now: f64,
     waveform: Waveform,
     frequency: Frequency,
     velocity: f32,
@@ -195,7 +202,6 @@ pub fn trigger_one_shot(
 ) {
     // Polyphony cap: prune voices that have finished, then drop this note if
     // we're maxed out — a frantic gesture burst can't spawn unbounded oscillators.
-    let now = audio_ctx.current_time();
     let at_cap = ACTIVE_VOICE_ENDS.with(|ends| {
         let mut ends = ends.borrow_mut();
         ends.retain(|&end| end > now);
@@ -219,7 +225,7 @@ pub fn trigger_one_shot(
     if let Ok(g) = web::GainNode::new(audio_ctx) {
         g.gain().set_value(0.0);
         // Honour the scheduled start time; never schedule in the past.
-        let t0 = start_time.max(audio_ctx.current_time() + 0.001);
+        let t0 = start_time.max(now + 0.001);
         let (glide_mul, glide_time, chorus_detune) = match waveform {
             Waveform::Saw => (1.05, 0.14, 9.0),
             Waveform::Triangle => (0.97, 0.18, -7.0),
@@ -305,7 +311,7 @@ pub fn create_analyser(
 
 // Wire per-voice panners, gains and effect sends
 pub fn wire_voices(
-    audio_ctx: &web::AudioContext,
+    audio_ctx: &web::BaseAudioContext,
     initial_positions: &[Vec3],
     master_gain: &web::GainNode,
     delay_in: &web::GainNode,

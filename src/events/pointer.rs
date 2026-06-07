@@ -691,6 +691,7 @@ fn wire_pointerup(w: &InputWiring) {
                 let dur = 0.24 + 0.11 * (i % 3) as f64 + 0.16 * (1.0 - uvy as f64);
                 audio::trigger_one_shot(
                     &w.audio_ctx,
+                    w.audio_ctx.current_time(),
                     wf,
                     freq,
                     vel,
@@ -741,6 +742,7 @@ fn wire_pointerup(w: &InputWiring) {
                 let dur = duration_base + 0.12 * (i % 3) as f64;
                 audio::trigger_one_shot(
                     &w.audio_ctx,
+                    w.audio_ctx.current_time(),
                     wf,
                     freq,
                     vel,

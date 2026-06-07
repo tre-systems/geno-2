@@ -325,6 +325,7 @@ impl<'a> FrameContext<'a> {
             for ev in &scheduled {
                 audio::trigger_one_shot(
                     &self.audio_ctx,
+                    audio_now,
                     waveforms[ev.voice_index],
                     ev.frequency_hz,
                     ev.velocity,

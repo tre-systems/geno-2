@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>geno-2 offline render</title>
+  </head>
+  <body>
+    <!-- Headless offline-render harness: no canvas, so the realtime app init
+         bails early and only the offline renderer is exercised. -->
+    <script type="module">
+      import init, { render_audio_wav } from "./pkg/app_web.js";
+      (async () => {
+        await init();
+        window.__renderAudioWav = render_audio_wav;
+        window.__offlineReady = true;
+      })();
+    </script>
+  </body>
+</html>

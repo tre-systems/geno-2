@@ -25,6 +25,11 @@ struct WaveUniforms {
 
 @group(0) @binding(0) var<uniform> u: WaveUniforms;
 
+// Back-and-forth twirl of the folded kaleidoscope: an oscillating rotation (vs a
+// constant drift) so the pattern twirls one way, then the other. Tunable.
+const TWIRL_AMP: f32 = 1.5; // peak rotation, radians
+const TWIRL_FREQ: f32 = 0.4; // reversal rate; period = 2*pi/FREQ ~ 16 s
+
 @vertex
 fn vs_fullscreen(@builtin(vertex_index) vid: u32) -> VsOut {
     let pos = array<vec2<f32>, 3>(
@@ -107,6 +112,10 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     var ang = atan2(p.y, p.x);
     ang = abs(fract((ang / sector) + 0.5) - 0.5) * sector;
     p = vec2<f32>(cos(ang), sin(ang)) * radius;
+
+    // Twirl the folded content back and forth. Applied after the fold, so every
+    // screen pixel rotates by the same angle and the 12-fold symmetry is intact.
+    p = rot(TWIRL_AMP * sin(t * TWIRL_FREQ)) * p;
 
     // Voice-reactive swirl/spoke warp.
     var tangential_warp = vec2<f32>(0.0);

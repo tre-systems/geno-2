@@ -1,7 +1,6 @@
 use crate::core::{EngineParams, MusicEngine, VoiceConfig, Waveform, DORIAN};
 use crate::{audio, dom, events, frame, input, overlay, render};
 use glam::Vec3;
-use instant::Instant;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,6 +8,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys as web;
+use web_time::Instant;
 
 fn show_audio_error(document: &web::Document, reason: &str) {
     if let Some(el) = document.get_element_by_id("audio-error") {
@@ -234,6 +234,10 @@ async fn init() -> anyhow::Result<()> {
                 // Visual pulses per voice and optional analyser for ambient effects
                 let pulses = Rc::new(RefCell::new(vec![0.0_f32; engine.borrow().voices.len()]));
                 let (analyser, analyser_buf) = audio::create_analyser(&audio_ctx);
+                if let Some(a) = &analyser {
+                    // Tap the master bus so the analyser drives audio-reactive ambient energy.
+                    _ = master_gain.connect_with_audio_node(a);
+                }
 
                 // Queued ripple UV from pointer taps (read by render tick)
                 let queued_ripple_uv: Rc<RefCell<Option<input::RippleEvent>>> =

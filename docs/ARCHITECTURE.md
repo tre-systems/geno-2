@@ -123,7 +123,7 @@ Loud note onsets also queue a visual ripple, so the picture pulses with the musi
 
 **Master chain.** Everything sums into `master_gain`, then: a high-pass + low-pass tone shaping, an arctan **WaveShaper** saturation (wet/dry blended), a **DynamicsCompressor** with makeup gain, and out to `destination`. The reverb bus is a procedurally-generated convolution IR; the delay bus is a `DelayNode` with a low-passed feedback loop. Swirl/gesture energy modulates the wet levels and saturation drive each frame (see the frame loop), so motion audibly opens up the space.
 
-> An `AnalyserNode` is created for optional analyser-driven ambient energy, but it is **not currently connected** to the master bus, so that path is inert — the audio→visual coupling runs entirely off note-event pulses today. Wiring the analyser is a [backlog](BACKLOG.md) item.
+> An `AnalyserNode` taps the master bus, so the frame loop's ambient energy responds to the overall output level alongside the per-note pulses.
 
 ## Generative Music Engine
 

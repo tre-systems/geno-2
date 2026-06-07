@@ -2,11 +2,6 @@
 
 Ordered, honest next work. No status history — see git for what changed.
 
-## Known issues
-
-- **Duplicate alt-tunings.** `TET19_PENTATONIC` and `TET31_PENTATONIC` in `src/core/music.rs` are byte-identical (both are equal-5 divisions of the octave), so the `8` and `0` tunings sound the same. Either derive genuine 19-TET / 31-TET pentatonics or rename the three "alt-tunings" to what they actually are (equal-step pentatonics).
-- **Analyser is unconnected.** `audio::create_analyser` builds an `AnalyserNode`, and `frame.rs` reads it for ambient energy, but nothing connects the master bus into it — so that path is inert. Either wire `master → analyser` or remove the dead read.
-
 ## Audio
 
 - Optional `AudioWorklet` path for sample-accurate scheduling (currently main-thread + WebAudio lookahead).
@@ -25,7 +20,7 @@ Ordered, honest next work. No status history — see git for what changed.
 
 ## Tooling
 
-- Modernize dependencies: `instant` → `web-time`, `getrandom` 0.2 → 0.3; periodic `npm run deps` review.
+- Modernize dependencies: `getrandom` 0.2 → 0.3 (entangled with `rand` 0.8's transitive 0.2; needs the `wasm_js` backend); periodic `npm run deps` review.
 - Extend `web-test.js` to change tempo and assert the hint overlay reflects the new BPM.
 
 ## Constraints (intentional)

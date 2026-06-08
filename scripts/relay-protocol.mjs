@@ -9,6 +9,7 @@ export const LIMITS = {
   maxMsgPerSec: 16, // per-socket rate for persisted {t:"set"} params
   maxMsgBytes: 1024, // reject oversized frames
   persistThrottleMs: 3000, // min interval between Durable Object storage writes
+  maxAuthFails: 8, // wrong-key attempts before the socket is closed (anti-brute-force)
 };
 
 // Transient performance events ({t:"ev"}) stream far faster than params (a
@@ -61,4 +62,36 @@ export function validEvent(msg) {
     finiteOpt(msg.g) &&
     finiteOpt(msg.p)
   );
+}
+
+// Validate an event and return a CLEAN copy carrying only the known fields (so a
+// padded/attacker-tampered message can't be re-broadcast verbatim), or null if
+// invalid. Numeric fields are already range-checked by validEvent; `a` is a flag.
+export function sanitizeEvent(msg) {
+  if (!validEvent(msg)) return null;
+  const out = { t: "ev", e: msg.e, u: msg.u, v: msg.v };
+  for (const f of ["s", "m", "g", "p"]) {
+    if (msg[f] !== undefined) out[f] = msg[f];
+  }
+  if (msg.a !== undefined) out.a = !!msg.a;
+  return out;
+}
+
+// Constant-time secret comparison: hash both sides to fixed-length SHA-256
+// digests, then XOR-accumulate — so neither the key's length nor how far a guess
+// matched leaks through timing. Works in the Worker and Node (Web Crypto).
+export async function keyMatches(provided, secret) {
+  if (typeof provided !== "string" || typeof secret !== "string" || secret.length === 0) {
+    return false;
+  }
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(provided)),
+    crypto.subtle.digest("SHA-256", enc.encode(secret)),
+  ]);
+  const av = new Uint8Array(a);
+  const bv = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  return diff === 0;
 }

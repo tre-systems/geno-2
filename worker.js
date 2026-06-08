@@ -1,21 +1,31 @@
 // Cloudflare Worker: serves the static app and hosts the performance relay.
 //
-// Security / cost model (pairs with a Cloudflare billing alert + edge rate-limit
-// rule on /room/* — no platform offers a hard spend cap):
-//   * Control requires the shared secret RELAY_KEY. Sockets that don't
-//     authenticate are read-only viewers; if RELAY_KEY is unset the relay is
-//     LOCKED (no control) — fail closed. Set it with `wrangler secret put
-//     RELAY_KEY`.
-//   * Per-room connection cap, per-socket message rate + size limits, a strict
-//     parameter whitelist, and throttled storage writes bound abuse and cost.
-//   * Cross-origin browser connections are rejected.
+// Security / cost model — the relay is a PUBLIC WebSocket endpoint, locked down
+// in depth (no platform offers a hard spend cap, so pair this with a Cloudflare
+// billing alert):
+//   * Control + broadcast require the shared secret RELAY_KEY. Unauthenticated
+//     sockets are read-only viewers; if RELAY_KEY is unset the relay is LOCKED
+//     (fail closed). Set it with `wrangler secret put RELAY_KEY`. The key is
+//     compared in constant time, and a socket is dropped after too many wrong
+//     guesses (anti-brute-force).
+//   * Per-room connection cap, per-socket rate + size limits with strike-based
+//     disconnect, a strict parameter whitelist, sanitized gesture events, and
+//     throttled storage writes bound per-connection abuse and cost.
+//   * Cross-origin browser connections are rejected. The same-origin check is
+//     skipped for non-browser clients (no Origin header), so the RELAY_KEY gate,
+//     not the Origin header, is the real authority.
+//   * In-code limits are per room (each room is an independent Durable Object),
+//     so they can't bound someone spawning many rooms/connections. Add an edge
+//     Rate Limiting rule on /room/* (see docs/NETWORKED_PERFORMANCE.md) to shed
+//     connection floods before they reach a Durable Object.
 
 import {
   ALLOWED_KEYS,
   LIMITS,
   TRANSIENT_LIMITS,
   validParam,
-  validEvent,
+  sanitizeEvent,
+  keyMatches,
 } from "./scripts/relay-protocol.mjs";
 
 export class Room {
@@ -66,6 +76,7 @@ export class Room {
       }
       return false;
     }
+    if (r.strikes > 0) r.strikes--; // recover on good behaviour; only sustained floods reach 20
     return true;
   }
 
@@ -89,8 +100,10 @@ export class Room {
   }
 
   async webSocketMessage(ws, message) {
+    // Reject oversized frames before decoding/parsing them.
+    const size = typeof message === "string" ? message.length : message.byteLength;
+    if (size > LIMITS.maxMsgBytes) return;
     const raw = typeof message === "string" ? message : new TextDecoder().decode(message);
-    if (raw.length > LIMITS.maxMsgBytes) return;
 
     let msg;
     try {
@@ -103,10 +116,18 @@ export class Room {
     if (!(msg.t === "ev" ? this.rateOkTransient(ws) : this.rateOk(ws))) return;
 
     if (msg.t === "auth") {
-      const key = this.env.RELAY_KEY;
-      const ok = typeof key === "string" && key.length > 0 && msg.key === key;
-      ws.serializeAttachment({ authed: ok });
+      const att = ws.deserializeAttachment() || {};
+      const ok = await keyMatches(msg.key, this.env.RELAY_KEY);
+      const fails = ok ? 0 : (att.fails || 0) + 1;
+      ws.serializeAttachment({ authed: ok, fails });
       ws.send(JSON.stringify({ t: "auth", ok }));
+      // Anti-brute-force: drop the socket after too many wrong keys so an
+      // attacker must reconnect (cheap to detect / shed at the edge).
+      if (!ok && fails >= LIMITS.maxAuthFails) {
+        try {
+          ws.close(1008, "too many auth attempts");
+        } catch {}
+      }
       return;
     }
 
@@ -130,14 +151,16 @@ export class Room {
 
     // Transient performance events: authed-only, broadcast to peers, never
     // persisted and never replayed to late joiners (so a flare doesn't fire on
-    // someone who joins minutes later).
+    // someone who joins minutes later). Re-broadcast a sanitized copy so no
+    // attacker-added fields ride along.
     if (msg.t === "ev") {
       if (!this.isAuthed(ws)) {
         ws.send(JSON.stringify({ t: "error", e: "unauthorized" }));
         return;
       }
-      if (!validEvent(msg)) return;
-      this.broadcast(ws, JSON.stringify(msg));
+      const clean = sanitizeEvent(msg);
+      if (!clean) return;
+      this.broadcast(ws, JSON.stringify(clean));
     }
   }
 

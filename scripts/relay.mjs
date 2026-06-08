@@ -14,7 +14,14 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { ALLOWED_KEYS, LIMITS, TRANSIENT_LIMITS, validParam, validEvent } from "./relay-protocol.mjs";
+import {
+  ALLOWED_KEYS,
+  LIMITS,
+  TRANSIENT_LIMITS,
+  validParam,
+  sanitizeEvent,
+  keyMatches,
+} from "./relay-protocol.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTROL_HTML = join(here, "..", "control.html");
@@ -65,6 +72,7 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws._authed = false;
+      ws._fails = 0; // wrong-key attempts (anti-brute-force)
       ws._times = []; // {t:"set"} rate window
       ws._evTimes = []; // {t:"ev"} rate window
       room.clients.add(ws);
@@ -74,7 +82,7 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
           if (c !== ws && c.readyState === 1) c.send(out);
         }
       };
-      ws.on("message", (data) => {
+      ws.on("message", async (data) => {
         let msg;
         try {
           msg = JSON.parse(data.toString());
@@ -95,8 +103,14 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
         }
 
         if (msg.t === "auth") {
-          ws._authed = typeof key === "string" && key.length > 0 && msg.key === key;
+          ws._authed = await keyMatches(msg.key, key);
+          ws._fails = ws._authed ? 0 : ws._fails + 1;
           ws.send(JSON.stringify({ t: "auth", ok: ws._authed }));
+          if (!ws._authed && ws._fails >= LIMITS.maxAuthFails) {
+            try {
+              ws.close(1008, "too many auth attempts");
+            } catch {}
+          }
           return;
         }
         if (msg.t === "set" && typeof msg.k === "string") {
@@ -115,8 +129,9 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
             ws.send(JSON.stringify({ t: "error", e: "unauthorized" }));
             return;
           }
-          if (!validEvent(msg)) return;
-          sendOthers(JSON.stringify(msg));
+          const clean = sanitizeEvent(msg);
+          if (!clean) return;
+          sendOthers(JSON.stringify(clean));
         }
       });
       const drop = () => room.clients.delete(ws);

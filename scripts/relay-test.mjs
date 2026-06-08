@@ -98,6 +98,28 @@ try {
   check("unauthenticated ev is not broadcast", await evNoBroadcast);
   viewer.close();
 
+  // 7b) Re-broadcast events are sanitized — attacker-added fields don't ride along.
+  const gotClean = wait(display, (m) => m.t === "ev" && m.e === "carve");
+  control.send(
+    JSON.stringify({ t: "ev", e: "carve", u: 0.5, v: 0.5, m: 0.3, evil: "<x>", junk: 999 }),
+  );
+  const cleanEv = await gotClean;
+  check(
+    "ev re-broadcast strips unknown fields",
+    cleanEv.evil === undefined && cleanEv.junk === undefined && cleanEv.m === 0.3,
+  );
+
+  // 7c) Repeated wrong keys close the socket (anti-brute-force lockout).
+  const brute = new WebSocket(base);
+  await open(brute);
+  await wait(brute, (m) => m.t === "state");
+  const bruteClosed = new Promise((resolve) => {
+    brute.addEventListener("close", () => resolve(true), { once: true });
+    setTimeout(() => resolve(false), 4000);
+  });
+  for (let i = 0; i < 10; i++) brute.send(JSON.stringify({ t: "auth", key: "wrong" }));
+  check("repeated wrong keys close the socket", await bruteClosed);
+
   // 8) Late joiner gets the accumulated valid state — no ev replay, no junk.
   const late = new WebSocket(base);
   await open(late);

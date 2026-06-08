@@ -33,16 +33,26 @@ locked down by default:
 - **Control and broadcast require the shared secret `RELAY_KEY`.** Sockets that
   do not authenticate are read-only viewers. **If `RELAY_KEY` is unset, control
   is disabled entirely (fail closed)** — displays still render, but nobody can
-  drive the instrument.
+  drive the instrument. The key is compared in **constant time** (both sides
+  hashed first), and a socket is **dropped after 8 wrong guesses**, so the secret
+  can't be timed or brute-forced over a connection. Pick a strong key.
 - **Gestures ride a separate transient channel (`{t:"ev"}`):** authed-only like
   control, broadcast to the room but **never persisted or replayed** to late
   joiners, with its own higher per-socket rate budget (a gesture stream is faster
-  than slider changes; the broadcaster coalesces its output to fit). Payloads are
-  tiny uv-anchored events.
-- Per-room connection cap (200), per-socket message rate + size (1 KB) limits, a
-  strict parameter whitelist with range checks, and throttled storage writes —
-  together these bound abuse and cost.
-- Cross-origin browser connections are rejected.
+  than slider changes; the broadcaster coalesces its output to fit). Events are
+  validated and **re-broadcast sanitized** to known fields only.
+- Per-room connection cap (200); per-socket rate limits (strike-based disconnect
+  on sustained flooding, with recovery for legitimate bursts) and a size cap
+  (1 KB) checked before decode; a strict parameter whitelist with range checks;
+  and throttled storage writes — together these bound per-connection abuse + cost.
+- Cross-origin **browser** connections are rejected. Non-browser clients send no
+  `Origin` header and skip that check — so the `RELAY_KEY` gate, not the Origin
+  header, is the real authority; an unauthenticated client can only view the
+  public parameter state.
+- **In-code limits are per room** — each room is an independent Durable Object,
+  so they can't bound someone opening *many* rooms or connections. The edge Rate
+  Limiting rule below is what caps that, and is **required for a public
+  deployment** (see *Cost protection*).
 
 The local dev relay (`scripts/relay.mjs`) mirrors the same protocol, auth, and
 limits, gated on the `RELAY_KEY` environment variable.
@@ -66,12 +76,18 @@ RELAY_KEY=your-secret npm run dev
 Cloudflare offers **no hard spend cap**, so the safety net is layered:
 
 1. The in-code limits above bound worst-case Durable Object compute, storage,
-   and broadcast fan-out. Idle WebSocket connections hibernate (no duration
-   billing); only active message processing and (throttled) storage writes bill.
-2. Set a **billing usage alert** in the Cloudflare dashboard (Notifications → add
-   a Workers/usage billing alert) so you are emailed before costs climb.
-3. Optional: add a **Rate Limiting rule** on `/room/*` (Security → WAF) to shed
-   connection/request floods at the edge, before they reach the Durable Object.
+   and broadcast fan-out **per connection and per room**. Idle WebSocket
+   connections hibernate (no duration billing); only active message processing
+   and (throttled) storage writes bill.
+2. **Required for a public deployment — an edge Rate Limiting rule on `/room/*`.**
+   The per-room limits can't bound someone opening unlimited rooms/connections;
+   this is the layer that does. In the Cloudflare dashboard (Security → WAF →
+   Rate limiting rules), add a rule matching `URI Path contains "/room/"` that
+   limits by client IP to e.g. 20 requests / 10 s, action **Block**. This sheds
+   connection floods at the edge, before they ever reach a Durable Object.
+3. Set a **billing usage alert** (Notifications → add a Workers/usage billing
+   alert) so you are emailed before costs climb — the backstop if anything slips
+   the limits above.
 
 ## Tests
 

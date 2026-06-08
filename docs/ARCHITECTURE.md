@@ -104,7 +104,6 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 Patterns the codebase would benefit from but does not yet apply consistently:
 
-- **One source of truth for the relay protocol.** The message types, the parameter whitelist, and the limits are duplicated in `worker.js` and `scripts/relay.mjs` (and partly in `control.html`). A single shared module — bundled into the worker and imported by the node relay — would keep the protocol, validation, and limits from drifting as parameters are added.
 - **Extend the constants pattern to audio.** `audio.rs` and `core/music.rs` carry the bulk of the project's magic numbers (filter cutoffs, gains, envelope shapes, gate/motif weights) inline. Lifting the audio FX design and the generative tuning into named constants — the way `constants.rs` already does for the visuals — would make the sound design legible and tweakable in one place.
 
 ## How a Frame Is Produced
@@ -184,7 +183,7 @@ The instrument can be driven remotely: a performer panel sends parameter changes
 - **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.
 - **Performer panel.** `control.html` (`/control`) sends tempo, detune, root, scale, seed, master volume, and pause.
 - **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`.
-- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients); `{t:"state",state}` (sent on join). **Control requires the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). See [Networked Performance](NETWORKED_PERFORMANCE.md).
+- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients); `{t:"state",state}` (sent on join). **Control requires the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). The whitelist, validation, and limits live once in `scripts/relay-protocol.mjs`, imported by both the worker and the node relay. See [Networked Performance](NETWORKED_PERFORMANCE.md).
 
 ## Build & Deploy
 

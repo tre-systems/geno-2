@@ -98,10 +98,13 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Tuning constants for the visual/interaction layer.** The smoothing time-constants, the swirl spring, the FX-mapping weights, and the per-voice send curves live as named constants in `constants.rs` rather than scattered literals. This holds for the visual/interaction layer; the audio FX design (`audio.rs`) and the generative engine (`core/music.rs`) still tune with inline literals — see *Patterns to adopt*.
 
+**Fail-closed control gate.** The networked relay treats control as a capability that is off by default: a socket must present the shared `RELAY_KEY` to send parameters, unauthenticated sockets are read-only, and if the secret is unconfigured nobody can control at all. Paired with a parameter whitelist and per-socket rate/size/connection limits, the public endpoint can be hijacked or abused only within tight, bounded limits (see *Networked Control*).
+
 ## Patterns to Adopt
 
 Patterns the codebase would benefit from but does not yet apply consistently:
 
+- **One source of truth for the relay protocol.** The message types, the parameter whitelist, and the limits are duplicated in `worker.js` and `scripts/relay.mjs` (and partly in `control.html`). A single shared module — bundled into the worker and imported by the node relay — would keep the protocol, validation, and limits from drifting as parameters are added.
 - **Extend the constants pattern to audio.** `audio.rs` and `core/music.rs` carry the bulk of the project's magic numbers (filter cutoffs, gains, envelope shapes, gate/motif weights) inline. Lifting the audio FX design and the generative tuning into named constants — the way `constants.rs` already does for the visuals — would make the sound design legible and tweakable in one place.
 
 ## How a Frame Is Produced
@@ -170,7 +173,7 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 
 ## Offline Render
 
-`src/offline.rs` renders the instrument deterministically to a 32-bit-float stereo WAV — no canvas, audio device, or user gesture. It drives the same `MusicEngine` event stream through the same WebAudio FX graph as the realtime app, but under an `OfflineAudioContext` rendered far faster than realtime (`scripts/render-offline.mjs` runs it in headless Chrome via `offline.html`). The graph is generic over `BaseAudioContext` so one definition serves both contexts, and `trigger_one_shot` takes an explicit `now` (realtime passes the audio clock; offline passes each note's onset). `src/instrument.rs` factors the default instrument — voices, tempo, scale, seed — so realtime and offline share one definition. A given seed always renders the same piece (runs differ only by sub-perceptual convolution FP noise), ready for mastering.
+`src/offline.rs` renders the instrument deterministically to a 32-bit-float stereo WAV — no canvas, audio device, or user gesture. It drives the same `MusicEngine` event stream through the same WebAudio FX graph as the realtime app, but under an `OfflineAudioContext` rendered far faster than realtime (`scripts/render-offline.mjs` runs it in headless Chrome via `offline.html`). The graph is generic over `BaseAudioContext` so one definition serves both contexts, and `trigger_one_shot` takes an explicit `now` (realtime passes the audio clock; offline passes each note's onset). `src/instrument.rs` factors the default instrument — voices, tempo, scale, seed — so realtime and offline share one definition. The offline render applies the FX graph's *baseline* parameters only — none of the realtime loop's swirl/gesture modulation, since there is no interaction — which is part of what keeps it deterministic. A given seed always renders the same piece (runs differ only by sub-perceptual convolution FP noise), ready for mastering.
 
 ## Networked Control
 
@@ -181,6 +184,7 @@ The instrument can be driven remotely: a performer panel sends parameter changes
 - **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.
 - **Performer panel.** `control.html` (`/control`) sends tempo, detune, root, scale, seed, master volume, and pause.
 - **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`.
+- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients); `{t:"state",state}` (sent on join). **Control requires the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). See [Networked Performance](NETWORKED_PERFORMANCE.md).
 
 ## Build & Deploy
 

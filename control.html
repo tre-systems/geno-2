@@ -61,6 +61,10 @@
           <div><label>Relay</label><input id="relay" type="text" /></div>
           <div><label>Room</label><input id="room" type="text" value="main" /></div>
         </div>
+        <div style="margin-top: 10px;">
+          <label>Control key</label>
+          <input id="key" type="password" placeholder="required to control" autocomplete="off" />
+        </div>
         <div class="row" style="margin-top: 10px; justify-content: space-between;">
           <span><span id="dot" class="dot"></span> <span id="status" class="muted">disconnected</span></span>
           <button id="connect">Connect</button>
@@ -141,7 +145,20 @@
           const url = `${$("relay").value.replace(/\/$/, "")}/room/${encodeURIComponent($("room").value || "main")}`;
           setStatus(false, "connecting…");
           ws = new WebSocket(url);
-          ws.onopen = () => { setStatus(true, `connected → ${url}`); pushAll(); };
+          ws.onopen = () => {
+            ws.send(JSON.stringify({ t: "auth", key: $("key").value }));
+            $("status").textContent = "authenticating…";
+          };
+          ws.onmessage = (ev) => {
+            let m;
+            try { m = JSON.parse(ev.data); } catch { return; }
+            if (m.t === "auth") {
+              if (m.ok) { setStatus(true, "connected — controlling"); pushAll(); }
+              else setStatus(false, "wrong control key");
+            } else if (m.t === "error" && m.e === "unauthorized") {
+              setStatus(false, "not authorized to control");
+            }
+          };
           ws.onclose = () => setStatus(false, "disconnected");
           ws.onerror = () => setStatus(false, "error — check relay URL");
         }

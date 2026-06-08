@@ -42,7 +42,8 @@ const check = (n, ok) => {
   if (!ok) failed = true;
 };
 
-const relay = await startRelay({ port: 0 });
+const KEY = "test-secret";
+const relay = await startRelay({ port: 0, key: KEY });
 const stat = await staticServer();
 const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox", "--enable-unsafe-webgpu"] });
 
@@ -68,6 +69,18 @@ try {
     control.addEventListener("open", res, { once: true });
     control.addEventListener("error", () => rej(new Error("control ws error")), { once: true });
   });
+  const authed = new Promise((res, rej) => {
+    const to = setTimeout(() => rej(new Error("auth timeout")), 4000);
+    control.addEventListener("message", (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.t === "auth") {
+        clearTimeout(to);
+        res(m.ok);
+      }
+    });
+  });
+  control.send(JSON.stringify({ t: "auth", key: KEY }));
+  if (!(await authed)) throw new Error("control failed to authenticate");
   for (const [k, v] of [["bpm", 123], ["root", 67], ["scale", "Lydian"], ["seed", 777]]) {
     control.send(JSON.stringify({ t: "set", k, v }));
   }

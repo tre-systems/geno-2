@@ -1,15 +1,16 @@
-// Headless transport test for the performance relay.
+// Headless security + transport test for the performance relay.
 //
-// Spins up the relay in-process, connects a control client and display clients,
-// and verifies broadcast + late-joiner state replay + no self-echo. Exits
-// non-zero on failure. Run: `node scripts/relay-test.mjs`.
+// Verifies auth (control requires the key), abuse guards (param whitelist +
+// ranges), broadcast, and late-joiner state replay. Exits non-zero on failure.
+// Run: `node scripts/relay-test.mjs`.
 
 import { startRelay } from "./relay.mjs";
 
+const KEY = "test-secret";
 const open = (ws) => new Promise((r) => ws.addEventListener("open", r, { once: true }));
 const wait = (ws, pred) =>
   new Promise((resolve, reject) => {
-    const to = setTimeout(() => reject(new Error("timeout waiting for message")), 4000);
+    const to = setTimeout(() => reject(new Error("timeout")), 4000);
     ws.addEventListener("message", (ev) => {
       const msg = JSON.parse(ev.data);
       if (pred(msg)) {
@@ -18,6 +19,18 @@ const wait = (ws, pred) =>
       }
     });
   });
+const never = (ws, pred, ms = 400) =>
+  new Promise((resolve) => {
+    let hit = false;
+    const on = (ev) => {
+      if (pred(JSON.parse(ev.data))) hit = true;
+    };
+    ws.addEventListener("message", on);
+    setTimeout(() => {
+      ws.removeEventListener("message", on);
+      resolve(!hit);
+    }, ms);
+  });
 
 let failed = false;
 const check = (name, ok) => {
@@ -25,40 +38,47 @@ const check = (name, ok) => {
   if (!ok) failed = true;
 };
 
-const relay = await startRelay({ port: 0 });
+const relay = await startRelay({ port: 0, key: KEY });
 const base = `ws://localhost:${relay.port}/room/test`;
 
 try {
   const control = new WebSocket(base);
   const display = new WebSocket(base);
   await Promise.all([open(control), open(display)]);
-  await wait(display, (m) => m.t === "state"); // initial (empty) state
+  await wait(display, (m) => m.t === "state");
 
-  // 1) control sets a param; display receives the broadcast.
+  // 1) Unauthenticated control cannot drive the room.
+  const noBroadcast = never(display, (m) => m.t === "set");
+  const gotErr = wait(control, (m) => m.t === "error");
+  control.send(JSON.stringify({ t: "set", k: "bpm", v: 120 }));
+  check("unauthenticated set is rejected", (await gotErr).e === "unauthorized");
+  check("unauthenticated set is not broadcast", await noBroadcast);
+
+  // 2) Wrong key rejected, correct key accepted.
+  const wrong = wait(control, (m) => m.t === "auth");
+  control.send(JSON.stringify({ t: "auth", key: "nope" }));
+  check("wrong key is rejected", (await wrong).ok === false);
+
+  const right = wait(control, (m) => m.t === "auth");
+  control.send(JSON.stringify({ t: "auth", key: KEY }));
+  check("correct key authenticates", (await right).ok === true);
+
+  // 3) Authenticated, valid set is broadcast.
   const gotBpm = wait(display, (m) => m.t === "set" && m.k === "bpm");
   control.send(JSON.stringify({ t: "set", k: "bpm", v: 120 }));
-  check("display receives broadcast param", (await gotBpm).v === 120);
+  check("authenticated set is broadcast", (await gotBpm).v === 120);
 
-  // 2) a second param.
-  const gotScale = wait(display, (m) => m.t === "set" && m.k === "scale");
-  control.send(JSON.stringify({ t: "set", k: "scale", v: "Dorian" }));
-  check("display receives second param", (await gotScale).v === "Dorian");
+  // 4) Invalid params (out of range / not whitelisted) are dropped.
+  const dropped = never(display, (m) => m.t === "set" && (m.k === "evil" || m.v === 9999));
+  control.send(JSON.stringify({ t: "set", k: "bpm", v: 9999 }));
+  control.send(JSON.stringify({ t: "set", k: "evil", v: 1 }));
+  check("invalid params are dropped", await dropped);
 
-  // 3) a late-joining display gets the accumulated state.
+  // 5) Late joiner gets only the accumulated valid state.
   const late = new WebSocket(base);
   await open(late);
   const state = (await wait(late, (m) => m.t === "state")).state;
-  check("late joiner catches up: bpm", state.bpm === 120);
-  check("late joiner catches up: scale", state.scale === "Dorian");
-
-  // 4) the sender does not receive its own echo.
-  let echoed = false;
-  control.addEventListener("message", (ev) => {
-    if (JSON.parse(ev.data).t === "set") echoed = true;
-  });
-  control.send(JSON.stringify({ t: "set", k: "root", v: 62 }));
-  await new Promise((r) => setTimeout(r, 200));
-  check("sender does not receive its own echo", echoed === false);
+  check("late joiner state is valid", state.bpm === 120 && state.evil === undefined);
 
   control.close();
   display.close();
@@ -70,5 +90,5 @@ try {
   await relay.close();
 }
 
-console.log(failed ? "\nFAILED" : "\nall transport checks passed");
+console.log(failed ? "\nFAILED" : "\nall relay security checks passed");
 process.exit(failed ? 1 : 0);

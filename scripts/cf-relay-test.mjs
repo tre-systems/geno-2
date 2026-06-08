@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const PORT = 8799;
-const wrangler = spawn("npx", ["wrangler", "dev", "--port", String(PORT)], {
+const wrangler = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--var", "RELAY_KEY:test-secret"], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "1" },
 });
@@ -61,6 +61,10 @@ try {
     const display = new WebSocket(base);
     await Promise.all([open(control), open(display)]);
     await waitMsg(display, (m) => m.t === "state");
+
+    const authed = waitMsg(control, (m) => m.t === "auth");
+    control.send(JSON.stringify({ t: "auth", key: "test-secret" }));
+    check("control authenticates with key", (await authed).ok === true);
 
     const got = waitMsg(display, (m) => m.t === "set" && m.k === "bpm");
     control.send(JSON.stringify({ t: "set", k: "bpm", v: 140 }));

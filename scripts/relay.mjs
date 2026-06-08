@@ -14,32 +14,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { ALLOWED_KEYS, LIMITS, validParam } from "./relay-protocol.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTROL_HTML = join(here, "..", "control.html");
-
-const ALLOWED_KEYS = new Set(["bpm", "detune", "root", "scale", "seed", "paused", "volume"]);
-const LIMITS = { maxSocketsPerRoom: 200, maxMsgPerSec: 16, maxMsgBytes: 1024 };
-
-function validParam(k, v) {
-  switch (k) {
-    case "bpm":
-      return typeof v === "number" && v >= 1 && v <= 400;
-    case "detune":
-      return typeof v === "number" && v >= -200 && v <= 200;
-    case "root":
-      return Number.isInteger(v) && v >= 0 && v <= 127;
-    case "seed":
-      return Number.isInteger(v) && v >= 0 && v <= 0xffffffff;
-    case "volume":
-      return typeof v === "number" && v >= 0 && v <= 1;
-    case "paused":
-      return typeof v === "boolean";
-    case "scale":
-      return typeof v === "string" && v.length <= 48;
-    default:
-      return false;
-  }
-}
 
 export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
   const rooms = new Map();

@@ -4,6 +4,50 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use web_sys as web;
 
+// --- Master + FX tuning ----------------------------------------------------
+// Sound-design constants for the master chain and FX buses, named here instead
+// of inline so the FX character is legible and tweakable in one place.
+const MASTER_GAIN: f32 = 0.46;
+const SAT_PRE_GAIN: f32 = 0.54;
+const SAT_DRIVE: f32 = 0.92;
+const SAT_CURVE_LEN: u32 = 2048;
+const SAT_WET_GAIN: f32 = 0.16;
+const SAT_DRY_GAIN: f32 = 0.84;
+const MASTER_HP_HZ: f32 = 95.0;
+const MASTER_HP_Q: f32 = 0.70;
+const MASTER_LP_HZ: f32 = 4600.0;
+const MASTER_LP_Q: f32 = 0.45;
+const COMP_THRESHOLD_DB: f32 = -22.0;
+const COMP_KNEE_DB: f32 = 18.0;
+const COMP_RATIO: f32 = 2.9;
+const COMP_ATTACK_SEC: f32 = 0.003;
+const COMP_RELEASE_SEC: f32 = 0.30;
+const COMP_MAKEUP_GAIN: f32 = 1.26;
+const REVERB_SECONDS: f32 = 3.8;
+const REVERB_DECAY_TAU: f32 = 1.60;
+const REVERB_EARLY_WINDOW_SEC: f32 = 0.36;
+const REVERB_LATE_MIX: f32 = 0.38;
+const REVERB_EARLY_MIX: f32 = 0.62;
+const REVERB_WET_GAIN: f32 = 0.20;
+const DELAY_MAX_SEC: f64 = 3.0;
+const DELAY_TIME_SEC: f32 = 0.38;
+const DELAY_TONE_HZ: f32 = 2450.0;
+const DELAY_TONE_Q: f32 = 0.72;
+const DELAY_FEEDBACK_GAIN: f32 = 0.50;
+const DELAY_WET_GAIN: f32 = 0.26;
+const VOICE_DELAY_SEND_DEFAULT: f32 = 0.22;
+const VOICE_REVERB_SEND_DEFAULT: f32 = 0.30;
+
+// --- Per-note synthesis tuning ---------------------------------------------
+const NOTE_PEAK_GAIN: f32 = 0.90; // envelope attack target, scaled by velocity
+const NOTE_START_GAIN: f32 = 0.0001;
+const NOTE_RELEASE_GAIN: f32 = 0.0008;
+const NOTE_SUSTAIN_FRAC: f64 = 0.68; // sustain point as a fraction of the note
+const NOTE_SUSTAIN_GUARD_SEC: f64 = 0.03;
+const NOTE_VOICE_END_PAD_SEC: f64 = 0.06;
+const CHORUS_START_OFFSET_SEC: f64 = 0.0015;
+const GLIDE_TIME_CHORUS_SCALE: f64 = 1.1;
+
 pub struct FxBuses {
     pub master_gain: web::GainNode,
     pub sat_pre: web::GainNode,
@@ -49,15 +93,15 @@ fn create_gain(
 
 pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBuses> {
     // Master gain
-    let master_gain = create_gain(audio_ctx, 0.46, "Master")?;
+    let master_gain = create_gain(audio_ctx, MASTER_GAIN, "Master")?;
 
     // Subtle master saturation (arctan) with wet/dry mix
-    let sat_pre = create_gain(audio_ctx, 0.54, "sat pre")?;
+    let sat_pre = create_gain(audio_ctx, SAT_PRE_GAIN, "sat pre")?;
     #[allow(deprecated)]
     let saturator = named(web::WaveShaperNode::new(audio_ctx), "WaveShaperNode")?;
     // Build arctan curve
-    let curve_len: u32 = 2048;
-    let drive: f32 = 0.92;
+    let curve_len: u32 = SAT_CURVE_LEN;
+    let drive: f32 = SAT_DRIVE;
     let mut curve: Vec<f32> = Vec::with_capacity(curve_len as usize);
     for i in 0..curve_len {
         let x = (i as f32 / (curve_len - 1) as f32) * 2.0 - 1.0;
@@ -65,8 +109,8 @@ pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBus
     }
     #[allow(deprecated)]
     saturator.set_curve(Some(curve.as_mut_slice()));
-    let sat_wet = create_gain(audio_ctx, 0.16, "sat wet")?;
-    let sat_dry = create_gain(audio_ctx, 0.84, "sat dry")?;
+    let sat_wet = create_gain(audio_ctx, SAT_WET_GAIN, "sat wet")?;
+    let sat_dry = create_gain(audio_ctx, SAT_DRY_GAIN, "sat dry")?;
 
     // Global tone shaping before saturation blend.
     let master_hp = named(
@@ -74,28 +118,28 @@ pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBus
         "Master highpass filter",
     )?;
     master_hp.set_type(web::BiquadFilterType::Highpass);
-    master_hp.frequency().set_value(95.0);
-    master_hp.q().set_value(0.70);
+    master_hp.frequency().set_value(MASTER_HP_HZ);
+    master_hp.q().set_value(MASTER_HP_Q);
 
     let master_lp = named(
         web::BiquadFilterNode::new(audio_ctx),
         "Master lowpass filter",
     )?;
     master_lp.set_type(web::BiquadFilterType::Lowpass);
-    master_lp.frequency().set_value(4600.0);
-    master_lp.q().set_value(0.45);
+    master_lp.frequency().set_value(MASTER_LP_HZ);
+    master_lp.q().set_value(MASTER_LP_Q);
 
     // Gentle master compression + makeup keeps baseline louder while taming peaks.
     let master_comp = named(
         web::DynamicsCompressorNode::new(audio_ctx),
         "DynamicsCompressorNode",
     )?;
-    master_comp.threshold().set_value(-22.0);
-    master_comp.knee().set_value(18.0);
-    master_comp.ratio().set_value(2.9);
-    master_comp.attack().set_value(0.003);
-    master_comp.release().set_value(0.30);
-    let comp_makeup = create_gain(audio_ctx, 1.26, "comp makeup")?;
+    master_comp.threshold().set_value(COMP_THRESHOLD_DB);
+    master_comp.knee().set_value(COMP_KNEE_DB);
+    master_comp.ratio().set_value(COMP_RATIO);
+    master_comp.attack().set_value(COMP_ATTACK_SEC);
+    master_comp.release().set_value(COMP_RELEASE_SEC);
+    let comp_makeup = create_gain(audio_ctx, COMP_MAKEUP_GAIN, "comp makeup")?;
 
     // Route master -> tone shaping -> [dry,wet] -> comp -> makeup -> destination.
     _ = master_gain.connect_with_audio_node(&master_hp);
@@ -116,7 +160,7 @@ pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBus
     // Create a short bright impulse response procedurally
     {
         let sr = audio_ctx.sample_rate();
-        let seconds = 3.8_f32;
+        let seconds = REVERB_SECONDS;
         let len = (sr as f32 * seconds) as u32;
         if let Ok(ir) = audio_ctx.create_buffer(2, len, sr) {
             let dt = 1.0_f32 / sr as f32;
@@ -131,9 +175,9 @@ pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBus
                     seed ^= seed << 5;
                     let n = (seed as f32 / std::u32::MAX as f32) * 2.0 - 1.0;
                     // Faster decay with soft early emphasis
-                    let decay = (-t / 1.60).exp();
-                    let early = (1.0 - (t / 0.36)).clamp(0.0, 1.0);
-                    *sample = n * decay * (0.38 + 0.62 * early);
+                    let decay = (-t / REVERB_DECAY_TAU).exp();
+                    let early = (1.0 - (t / REVERB_EARLY_WINDOW_SEC)).clamp(0.0, 1.0);
+                    *sample = n * decay * (REVERB_LATE_MIX + REVERB_EARLY_MIX * early);
                     t += dt;
                 }
                 _ = ir.copy_to_channel(&mut buf, ch as i32);
@@ -141,21 +185,24 @@ pub fn build_fx_buses(audio_ctx: &web::BaseAudioContext) -> anyhow::Result<FxBus
             reverb.set_buffer(Some(&ir));
         }
     }
-    let reverb_wet = create_gain(audio_ctx, 0.20, "Reverb wet")?;
+    let reverb_wet = create_gain(audio_ctx, REVERB_WET_GAIN, "Reverb wet")?;
     _ = reverb_in.connect_with_audio_node(&reverb);
     _ = reverb.connect_with_audio_node(&reverb_wet);
     _ = reverb_wet.connect_with_audio_node(&master_gain);
 
     // Delay bus with feedback loop and band-limited tone
     let delay_in = create_gain(audio_ctx, 1.0, "Delay in")?;
-    let delay = named(audio_ctx.create_delay_with_max_delay_time(3.0), "DelayNode")?;
-    delay.delay_time().set_value(0.38);
+    let delay = named(
+        audio_ctx.create_delay_with_max_delay_time(DELAY_MAX_SEC),
+        "DelayNode",
+    )?;
+    delay.delay_time().set_value(DELAY_TIME_SEC);
     let delay_tone = named(web::BiquadFilterNode::new(audio_ctx), "Delay tone filter")?;
     delay_tone.set_type(web::BiquadFilterType::Lowpass);
-    delay_tone.frequency().set_value(2450.0);
-    delay_tone.q().set_value(0.72);
-    let delay_feedback = create_gain(audio_ctx, 0.50, "Delay feedback")?;
-    let delay_wet = create_gain(audio_ctx, 0.26, "Delay wet")?;
+    delay_tone.frequency().set_value(DELAY_TONE_HZ);
+    delay_tone.q().set_value(DELAY_TONE_Q);
+    let delay_feedback = create_gain(audio_ctx, DELAY_FEEDBACK_GAIN, "Delay feedback")?;
+    let delay_wet = create_gain(audio_ctx, DELAY_WET_GAIN, "Delay wet")?;
     _ = delay_in.connect_with_audio_node(&delay);
     _ = delay.connect_with_audio_node(&delay_tone);
     _ = delay_tone.connect_with_audio_node(&delay_feedback);
@@ -243,9 +290,10 @@ pub fn trigger_one_shot(
             _ = chorus
                 .frequency()
                 .set_value_at_time(frequency_hz * (2.0 - glide_mul), t0);
-            _ = chorus
-                .frequency()
-                .linear_ramp_to_value_at_time(frequency_hz, t0 + glide_time * 1.1);
+            _ = chorus.frequency().linear_ramp_to_value_at_time(
+                frequency_hz,
+                t0 + glide_time * GLIDE_TIME_CHORUS_SCALE,
+            );
         }
 
         let attack = match waveform {
@@ -263,18 +311,21 @@ pub fn trigger_one_shot(
             Waveform::Triangle => 0.78,
             Waveform::Sine => 0.96,
         };
-        let sustain_t = (t0 + duration_sec * 0.68).min(t0 + duration_sec - 0.03);
+        let sustain_t =
+            (t0 + duration_sec * NOTE_SUSTAIN_FRAC).min(t0 + duration_sec - NOTE_SUSTAIN_GUARD_SEC);
         let end_t = t0 + duration_sec + release_tail;
-        ACTIVE_VOICE_ENDS.with(|ends| ends.borrow_mut().push(end_t + 0.06));
+        ACTIVE_VOICE_ENDS.with(|ends| ends.borrow_mut().push(end_t + NOTE_VOICE_END_PAD_SEC));
 
-        _ = g.gain().set_value_at_time(0.0001, t0);
+        _ = g.gain().set_value_at_time(NOTE_START_GAIN, t0);
         _ = g
             .gain()
-            .linear_ramp_to_value_at_time(velocity * 0.90, t0 + attack);
+            .linear_ramp_to_value_at_time(velocity * NOTE_PEAK_GAIN, t0 + attack);
         _ = g
             .gain()
             .linear_ramp_to_value_at_time(velocity * sustain_k, sustain_t);
-        _ = g.gain().exponential_ramp_to_value_at_time(0.0008, end_t);
+        _ = g
+            .gain()
+            .exponential_ramp_to_value_at_time(NOTE_RELEASE_GAIN, end_t);
 
         _ = src_main.connect_with_audio_node(&g);
         if let Some(chorus) = &src_chorus {
@@ -286,11 +337,11 @@ pub fn trigger_one_shot(
 
         _ = src_main.start_with_when(t0);
         if let Some(chorus) = &src_chorus {
-            _ = chorus.start_with_when(t0 + 0.0015);
+            _ = chorus.start_with_when(t0 + CHORUS_START_OFFSET_SEC);
         }
-        _ = src_main.stop_with_when(end_t + 0.06);
+        _ = src_main.stop_with_when(end_t + NOTE_VOICE_END_PAD_SEC);
         if let Some(chorus) = &src_chorus {
-            _ = chorus.stop_with_when(end_t + 0.06);
+            _ = chorus.stop_with_when(end_t + NOTE_VOICE_END_PAD_SEC);
         }
     }
 }
@@ -336,11 +387,11 @@ pub fn wire_voices(
         _ = gain.connect_with_audio_node(&panner);
         _ = panner.connect_with_audio_node(master_gain);
 
-        let d_send = create_gain(audio_ctx, 0.22, "Delay send")?;
+        let d_send = create_gain(audio_ctx, VOICE_DELAY_SEND_DEFAULT, "Delay send")?;
         _ = d_send.connect_with_audio_node(delay_in);
         delay_sends.push(d_send);
 
-        let r_send = create_gain(audio_ctx, 0.30, "Reverb send")?;
+        let r_send = create_gain(audio_ctx, VOICE_REVERB_SEND_DEFAULT, "Reverb send")?;
         _ = r_send.connect_with_audio_node(reverb_in);
         reverb_sends.push(r_send);
 

@@ -96,7 +96,7 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Errors bubble as `anyhow::Result`; `JsValue` only at the boundary.** The engine and setup code (`audio`, `render`, `wasm_app::init`) return `anyhow::Result`, attaching context as failures propagate; `JsValue` is confined to the `#[wasm_bindgen]` `start` surface and the DOM error overlay. A failed node-graph build surfaces its real cause in the console rather than a bare unit error.
 
-**Tuning constants for the visual/interaction layer.** The smoothing time-constants, the swirl spring, the FX-mapping weights, and the per-voice send curves live as named constants in `constants.rs` rather than scattered literals. This holds for the visual/interaction layer; the audio FX design (`audio.rs`) and the generative engine (`core/music.rs`) still tune with inline literals — see *Patterns to adopt*.
+**Named tuning constants.** Smoothing time-constants, the swirl spring, FX-mapping weights, and per-voice send curves live as named constants in `constants.rs`; the audio FX design and per-note synthesis are named at the top of `audio.rs`; and the generative weights and thresholds are named in `core/music.rs`. Tuning lives in legible blocks rather than scattered literals (the per-waveform synthesis profiles and per-voice generative profiles stay inline as match arms — see *Patterns to adopt*).
 
 **Fail-closed control gate.** The networked relay treats control as a capability that is off by default: a socket must present the shared `RELAY_KEY` to send parameters, unauthenticated sockets are read-only, and if the secret is unconfigured nobody can control at all. Paired with a parameter whitelist and per-socket rate/size/connection limits, the public endpoint can be hijacked or abused only within tight, bounded limits (see *Networked Control*).
 
@@ -104,7 +104,7 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 Patterns the codebase would benefit from but does not yet apply consistently:
 
-- **Extend the constants pattern to audio.** `audio.rs` and `core/music.rs` carry the bulk of the project's magic numbers (filter cutoffs, gains, envelope shapes, gate/motif weights) inline. Lifting the audio FX design and the generative tuning into named constants — the way `constants.rs` already does for the visuals — would make the sound design legible and tweakable in one place.
+- **Name the remaining profile tuples.** The per-waveform synthesis profiles in `audio.rs` (glide, attack, sustain, release per waveform) and the per-voice generative profiles in `core/music.rs` (velocity/duration/register policy per voice) are still inline tuples. They read clearly today as match arms; naming them would mainly help once they need independent tuning.
 
 ## How a Frame Is Produced
 

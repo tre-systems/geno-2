@@ -348,12 +348,13 @@ impl MusicEngine {
                             + voice.position.x * 1.3
                             + voice.position.z * 0.9)
                             .cos();
-                gate = (0.62 * hard_gate + 0.24 * swing + 0.14 * travel).clamp(0.0, 1.0);
+                gate = (GATE_HARD_W * hard_gate + GATE_SWING_W * swing + GATE_TRAVEL_W * travel)
+                    .clamp(0.0, 1.0);
                 accent = accent_gate(step, i);
-                let prob = (self.configs[i].trigger_probability * (0.16 + 0.76 * gate)
-                    + 0.10 * accent
-                    + 0.08 * (phrase_idx as f32 / PHRASE_ROOT_SHIFTS.len() as f32))
-                    .clamp(0.02, 0.98);
+                let prob = (self.configs[i].trigger_probability * (PROB_BASE + PROB_GATE_W * gate)
+                    + PROB_ACCENT_W * accent
+                    + PROB_PHRASE_W * (phrase_idx as f32 / PHRASE_ROOT_SHIFTS.len() as f32))
+                    .clamp(PROB_MIN, PROB_MAX);
                 if rng.gen::<f32>() >= prob {
                     continue;
                 }
@@ -363,11 +364,11 @@ impl MusicEngine {
                 let phase = (step as i32 * stride) + motif + phrase_idx as i32;
                 let scale_pos = phase.rem_euclid(scale_len as i32);
                 let mut degree = scale[scale_pos as usize];
-                if accent > 0.84 && rng.gen::<f32>() < 0.24 {
+                if accent > ACCENT_OCTAVE_THRESHOLD && rng.gen::<f32>() < ACCENT_OCTAVE_CHANCE {
                     degree += 12.0;
                 }
 
-                let contour = 0.42 * (step as f32 * (0.14 + i as f32 * 0.04)).sin();
+                let contour = CONTOUR_DEPTH * (step as f32 * (0.14 + i as f32 * 0.04)).sin();
                 let register = match i {
                     0 if gate > 0.78 => -12.0,
                     0 => -24.0,
@@ -375,7 +376,7 @@ impl MusicEngine {
                     _ if gate > 0.72 => 12.0,
                     _ => 24.0,
                 };
-                let micro_drift = (rng.gen::<f32>() - 0.5) * 0.14;
+                let micro_drift = (rng.gen::<f32>() - 0.5) * MICRO_DRIFT_DEPTH;
                 midi =
                     root_midi + phrase_shift + degree + contour + register + octave12 + micro_drift;
             }
@@ -387,11 +388,15 @@ impl MusicEngine {
                 _ => (0.24, 0.52, 0.54, 0.70),
             };
             let vel = (vel_base
-                + vel_span * (0.58 * gate + 0.22 * accent + 0.20 * rng.gen::<f32>()))
+                + vel_span
+                    * (VEL_GATE_W * gate
+                        + VEL_ACCENT_W * accent
+                        + VEL_RANDOM_W * rng.gen::<f32>()))
             .clamp(0.0, 1.0);
-            let sustain = (1.0 - staccato * gate).clamp(0.18, 1.35);
-            let jitter = 0.72 + 0.48 * rng.gen::<f32>();
-            let dur = (self.configs[i].base_duration * dur_scale * sustain * jitter).max(0.04);
+            let sustain = (1.0 - staccato * gate).clamp(SUSTAIN_MIN, SUSTAIN_MAX);
+            let jitter = JITTER_BASE + JITTER_SPAN * rng.gen::<f32>();
+            let dur =
+                (self.configs[i].base_duration * dur_scale * sustain * jitter).max(DUR_MIN_SEC);
             out_events.push(NoteEvent {
                 voice_index: i,
                 frequency_hz: freq,
@@ -402,6 +407,31 @@ impl MusicEngine {
         }
     }
 }
+
+// --- Generative tuning -----------------------------------------------------
+// Weights and thresholds that shape per-step note generation, named here instead
+// of inline so the musical behavior is legible and tweakable in one place.
+const GATE_HARD_W: f32 = 0.62; // Euclidean hard-gate weight in the gate blend
+const GATE_SWING_W: f32 = 0.24;
+const GATE_TRAVEL_W: f32 = 0.14;
+const PROB_BASE: f32 = 0.16; // trigger-probability floor before gate scaling
+const PROB_GATE_W: f32 = 0.76;
+const PROB_ACCENT_W: f32 = 0.10;
+const PROB_PHRASE_W: f32 = 0.08;
+const PROB_MIN: f32 = 0.02;
+const PROB_MAX: f32 = 0.98;
+const ACCENT_OCTAVE_THRESHOLD: f32 = 0.84; // accent above this can jump an octave
+const ACCENT_OCTAVE_CHANCE: f32 = 0.24;
+const CONTOUR_DEPTH: f32 = 0.42;
+const MICRO_DRIFT_DEPTH: f32 = 0.14;
+const VEL_GATE_W: f32 = 0.58;
+const VEL_ACCENT_W: f32 = 0.22;
+const VEL_RANDOM_W: f32 = 0.20;
+const SUSTAIN_MIN: f32 = 0.18;
+const SUSTAIN_MAX: f32 = 1.35;
+const JITTER_BASE: f32 = 0.72;
+const JITTER_SPAN: f32 = 0.48;
+const DUR_MIN_SEC: f32 = 0.04;
 
 /// Maximum grid steps the scheduler catches up in a single `tick`, bounding the
 /// note flood after a long stall (a backgrounded, rAF-throttled tab).

@@ -1,4 +1,4 @@
-use crate::core::{Frequency, Waveform};
+use crate::core::{Cents, Frequency, MidiNote, MusicEngine, Waveform};
 use glam::Vec3;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -405,4 +405,84 @@ pub fn wire_voices(
         delay_sends,
         reverb_sends,
     })
+}
+
+// --- Gesture chords --------------------------------------------------------
+// The flare (tap) and carve (drag-release) chords, factored out so the local
+// pointer handlers and the networked-display appliers (`perf::perf_flare` /
+// `perf_carve`) fire byte-identical voicings from the same uv. Both spread the
+// chord across the voices' waveforms and route through the per-voice sends.
+
+/// Tap → flare: a fifth/octave-stacked chord whose pitch tracks the cursor.
+pub fn emit_flare_chord(
+    audio_ctx: &web::AudioContext,
+    engine: &MusicEngine,
+    voice_gains: &[web::GainNode],
+    delay_sends: &[web::GainNode],
+    reverb_sends: &[web::GainNode],
+    uvx: f32,
+    uvy: f32,
+) {
+    let base_midi = 42.0 + uvx * 34.0 + (0.5 - uvy) * 8.0;
+    let steps: [f32; 5] = [0.0, 7.0, 12.0, 19.0, 24.0];
+    let duration_base = 0.20 + 0.24 * (1.0 - uvy as f64);
+    let now = audio_ctx.current_time();
+    let voice_len = voice_gains.len().max(1);
+    for (i, step) in steps.iter().enumerate() {
+        let vi = i % voice_len;
+        let wf = engine.configs[vi % engine.configs.len()].waveform;
+        let freq = MidiNote(base_midi + step).to_freq(Cents::default());
+        let vel = (0.30 + 0.24 * (1.0 - uvy) + i as f32 * 0.04).clamp(0.0, 1.0);
+        let dur = duration_base + 0.12 * (i % 3) as f64;
+        trigger_one_shot(
+            audio_ctx,
+            now,
+            wf,
+            freq,
+            vel,
+            dur,
+            now,
+            &voice_gains[vi],
+            &delay_sends[vi],
+            &reverb_sends[vi],
+        );
+    }
+}
+
+/// Drag-release → carve: an arpeggiated accent chord shaped by drag angle and
+/// peak motion.
+pub fn emit_carve_chord(
+    audio_ctx: &web::AudioContext,
+    engine: &MusicEngine,
+    voice_gains: &[web::GainNode],
+    delay_sends: &[web::GainNode],
+    reverb_sends: &[web::GainNode],
+    _uvx: f32,
+    uvy: f32,
+    motion_n: f32,
+    angle01: f32,
+) {
+    let base_midi = 43.0 + angle01 * 30.0 + (0.5 - uvy) * 5.0;
+    let accents: [f32; 5] = [0.0, 4.0, 9.0, 14.0, 19.0];
+    let now = audio_ctx.current_time();
+    let voice_len = voice_gains.len().max(1);
+    for (i, interval) in accents.iter().enumerate() {
+        let vi = i % voice_len;
+        let wf = engine.configs[vi % engine.configs.len()].waveform;
+        let freq = MidiNote(base_midi + interval).to_freq(Cents::default());
+        let vel = (0.34 + 0.22 * motion_n + i as f32 * 0.03).clamp(0.0, 1.0);
+        let dur = 0.24 + 0.11 * (i % 3) as f64 + 0.16 * (1.0 - uvy as f64);
+        trigger_one_shot(
+            audio_ctx,
+            now,
+            wf,
+            freq,
+            vel,
+            dur,
+            now,
+            &voice_gains[vi],
+            &delay_sends[vi],
+            &reverb_sends[vi],
+        );
+    }
 }

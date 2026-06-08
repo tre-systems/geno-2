@@ -1,11 +1,11 @@
 use crate::audio;
 use crate::core::{
-    Bpm, Cents, MidiNote, MusicEngine, AEOLIAN, DORIAN, IONIAN, LOCRIAN, LYDIAN, MIXOLYDIAN,
-    PHRYGIAN,
+    Bpm, Cents, MusicEngine, AEOLIAN, DORIAN, IONIAN, LOCRIAN, LYDIAN, MIXOLYDIAN, PHRYGIAN,
 };
 use crate::input;
 use crate::input::TouchGestureKind;
 use crate::overlay;
+use crate::perf;
 use glam::Vec3;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -76,9 +76,12 @@ impl InputWiring {
     }
 
     /// Queue a surface ripple at the given UV with the given amplitude,
-    /// replacing any ripple not yet consumed by the render loop.
+    /// replacing any ripple not yet consumed by the render loop. Also records the
+    /// ripple for networked broadcast (a no-op unless broadcasting), so every
+    /// ripple source — tap, drag, flare, carve — is captured from one place.
     fn queue_ripple(&self, uv: [f32; 2], amp: f32) {
         *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent { uv, amp });
+        perf::record_ripple(uv, amp);
     }
 
     /// Move the tracked cursor to a UV position expressed in canvas pixels,
@@ -679,27 +682,18 @@ fn wire_pointerup(w: &InputWiring) {
                 (eng.params.bpm.get(), eng.params.detune_cents.get())
             };
 
-            let base_midi = 43.0 + angle01 * 30.0 + (0.5 - uvy) * 5.0;
-            let accents: [f32; 5] = [0.0, 4.0, 9.0, 14.0, 19.0];
-            let voice_len = w.voice_gains.len().max(1);
-            let eng = w.engine.borrow();
-            for (i, interval) in accents.iter().enumerate() {
-                let vi = i % voice_len;
-                let wf = eng.configs[vi].waveform;
-                let freq = MidiNote(base_midi + *interval).to_freq(Cents::default());
-                let vel = (0.34 + 0.22 * motion_n + i as f32 * 0.03).clamp(0.0, 1.0);
-                let dur = 0.24 + 0.11 * (i % 3) as f64 + 0.16 * (1.0 - uvy as f64);
-                audio::trigger_one_shot(
+            {
+                let eng = w.engine.borrow();
+                audio::emit_carve_chord(
                     &w.audio_ctx,
-                    w.audio_ctx.current_time(),
-                    wf,
-                    freq,
-                    vel,
-                    dur,
-                    w.audio_ctx.current_time(),
-                    &w.voice_gains[vi],
-                    &w.delay_sends[vi],
-                    &w.reverb_sends[vi],
+                    &eng,
+                    &w.voice_gains,
+                    &w.delay_sends,
+                    &w.reverb_sends,
+                    uvx,
+                    uvy,
+                    motion_n,
+                    angle01,
                 );
             }
 
@@ -712,6 +706,7 @@ fn wire_pointerup(w: &InputWiring) {
 
             let amp = (1.05 + 0.70 * motion_n + 0.50 * travel_n).clamp(0.6, 2.1);
             w.queue_ripple([uvx, uvy], amp);
+            perf::record_carve(uvx, uvy, motion_n, angle01);
 
             {
                 let mut ms = w.mouse_state.borrow_mut();
@@ -728,33 +723,21 @@ fn wire_pointerup(w: &InputWiring) {
                 spin_accum
             );
         } else {
-            let base_midi = 42.0 + uvx * 34.0 + (0.5 - uvy) * 8.0;
-            let flare_steps: [f32; 5] = [0.0, 7.0, 12.0, 19.0, 24.0];
-            let duration_base = 0.20 + 0.24 * (1.0 - uvy as f64);
-
-            let eng = w.engine.borrow();
-            let voice_len = eng.voices.len();
-            for i in 0..flare_steps.len() {
-                let vi = i % voice_len;
-                let wf = eng.configs[vi].waveform;
-                let freq = MidiNote(base_midi + flare_steps[i]).to_freq(Cents::default());
-                let vel = (0.30 + 0.24 * (1.0 - uvy) + i as f32 * 0.04).clamp(0.0, 1.0);
-                let dur = duration_base + 0.12 * (i % 3) as f64;
-                audio::trigger_one_shot(
+            {
+                let eng = w.engine.borrow();
+                audio::emit_flare_chord(
                     &w.audio_ctx,
-                    w.audio_ctx.current_time(),
-                    wf,
-                    freq,
-                    vel,
-                    dur,
-                    w.audio_ctx.current_time(),
-                    &w.voice_gains[vi],
-                    &w.delay_sends[vi],
-                    &w.reverb_sends[vi],
+                    &eng,
+                    &w.voice_gains,
+                    &w.delay_sends,
+                    &w.reverb_sends,
+                    uvx,
+                    uvy,
                 );
             }
 
             w.queue_ripple([uvx, uvy], 1.45);
+            perf::record_flare(uvx, uvy);
             {
                 let mut ms = w.mouse_state.borrow_mut();
                 ms.gesture_energy = ms.gesture_energy.max(0.46);

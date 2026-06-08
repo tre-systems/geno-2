@@ -1,8 +1,9 @@
 // Headless security + transport test for the performance relay.
 //
 // Verifies auth (control requires the key), abuse guards (param whitelist +
-// ranges), broadcast, and late-joiner state replay. Exits non-zero on failure.
-// Run: `node scripts/relay-test.mjs`.
+// ranges), broadcast, late-joiner state replay, and the transient gesture
+// channel ({t:"ev"}: authed-only, broadcast, not persisted). Exits non-zero on
+// failure. Run: `node scripts/relay-test.mjs`.
 
 import { startRelay } from "./relay.mjs";
 
@@ -74,11 +75,36 @@ try {
   control.send(JSON.stringify({ t: "set", k: "evil", v: 1 }));
   check("invalid params are dropped", await dropped);
 
-  // 5) Late joiner gets only the accumulated valid state.
+  // 5) Authenticated gesture events broadcast to peers.
+  const gotEv = wait(display, (m) => m.t === "ev" && m.e === "flare");
+  control.send(JSON.stringify({ t: "ev", e: "flare", u: 0.5, v: 0.4 }));
+  const ev = await gotEv;
+  check("authenticated ev is broadcast", ev.e === "flare" && ev.u === 0.5 && ev.v === 0.4);
+
+  // 6) Invalid gesture events (bad kind / out-of-range uv) are dropped.
+  const evDropped = never(display, (m) => m.t === "ev" && (m.e === "evil" || m.u === 5));
+  control.send(JSON.stringify({ t: "ev", e: "evil", u: 0.5, v: 0.5 }));
+  control.send(JSON.stringify({ t: "ev", e: "flare", u: 5, v: 0.5 }));
+  check("invalid ev is dropped", await evDropped);
+
+  // 7) Unauthenticated sockets cannot send gesture events.
+  const viewer = new WebSocket(base);
+  await open(viewer);
+  await wait(viewer, (m) => m.t === "state");
+  const evUnauth = wait(viewer, (m) => m.t === "error");
+  const evNoBroadcast = never(display, (m) => m.t === "ev" && m.e === "ripple");
+  viewer.send(JSON.stringify({ t: "ev", e: "ripple", u: 0.2, v: 0.2 }));
+  check("unauthenticated ev is rejected", (await evUnauth).e === "unauthorized");
+  check("unauthenticated ev is not broadcast", await evNoBroadcast);
+  viewer.close();
+
+  // 8) Late joiner gets the accumulated valid state — no ev replay, no junk.
   const late = new WebSocket(base);
   await open(late);
+  const noEvReplay = never(late, (m) => m.t === "ev");
   const state = (await wait(late, (m) => m.t === "state")).state;
   check("late joiner state is valid", state.bpm === 120 && state.evil === undefined);
+  check("ev is not replayed to late joiners", await noEvReplay);
 
   control.close();
   display.close();

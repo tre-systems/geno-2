@@ -10,7 +10,13 @@
 //     parameter whitelist, and throttled storage writes bound abuse and cost.
 //   * Cross-origin browser connections are rejected.
 
-import { ALLOWED_KEYS, LIMITS, validParam } from "./scripts/relay-protocol.mjs";
+import {
+  ALLOWED_KEYS,
+  LIMITS,
+  TRANSIENT_LIMITS,
+  validParam,
+  validEvent,
+} from "./scripts/relay-protocol.mjs";
 
 export class Room {
   constructor(state, env) {
@@ -18,7 +24,8 @@ export class Room {
     this.env = env;
     this.params = null;
     this.lastPersist = 0;
-    this.rate = new WeakMap(); // ws -> { times:number[], strikes:number }
+    this.rate = new WeakMap(); // ws -> { times:number[], strikes:number } for {t:"set"}
+    this.evRate = new WeakMap(); // ws -> { times:number[], strikes:number } for {t:"ev"}
   }
 
   async params_() {
@@ -40,16 +47,18 @@ export class Room {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  rateOk(ws) {
+  // Per-socket sliding-window rate limit. Persistent strikes close a flooding
+  // socket. Shared by the param ({t:"set"}) and gesture ({t:"ev"}) budgets.
+  rateOkIn(map, ws, limit) {
     const now = Date.now();
-    let r = this.rate.get(ws);
+    let r = map.get(ws);
     if (!r) {
       r = { times: [], strikes: 0 };
-      this.rate.set(ws, r);
+      map.set(ws, r);
     }
     r.times = r.times.filter((t) => now - t < 1000);
     r.times.push(now);
-    if (r.times.length > LIMITS.maxMsgPerSec) {
+    if (r.times.length > limit) {
       if (++r.strikes > 20) {
         try {
           ws.close(1008, "rate limit");
@@ -60,10 +69,28 @@ export class Room {
     return true;
   }
 
+  rateOk(ws) {
+    return this.rateOkIn(this.rate, ws, LIMITS.maxMsgPerSec);
+  }
+
+  rateOkTransient(ws) {
+    return this.rateOkIn(this.evRate, ws, TRANSIENT_LIMITS.maxEvPerSec);
+  }
+
+  // Fan a message out to every peer in the room except the sender.
+  broadcast(from, out) {
+    for (const peer of this.state.getWebSockets()) {
+      if (peer !== from) {
+        try {
+          peer.send(out);
+        } catch {}
+      }
+    }
+  }
+
   async webSocketMessage(ws, message) {
     const raw = typeof message === "string" ? message : new TextDecoder().decode(message);
     if (raw.length > LIMITS.maxMsgBytes) return;
-    if (!this.rateOk(ws)) return;
 
     let msg;
     try {
@@ -71,6 +98,9 @@ export class Room {
     } catch {
       return;
     }
+
+    // Per-type rate budgets: gesture events stream faster than params.
+    if (!(msg.t === "ev" ? this.rateOkTransient(ws) : this.rateOk(ws))) return;
 
     if (msg.t === "auth") {
       const key = this.env.RELAY_KEY;
@@ -81,8 +111,7 @@ export class Room {
     }
 
     if (msg.t === "set" && typeof msg.k === "string") {
-      const att = ws.deserializeAttachment();
-      if (!att || att.authed !== true) {
+      if (!this.isAuthed(ws)) {
         ws.send(JSON.stringify({ t: "error", e: "unauthorized" }));
         return;
       }
@@ -95,15 +124,26 @@ export class Room {
         this.lastPersist = now;
         await this.state.storage.put("params", params);
       }
-      const out = JSON.stringify({ t: "set", k: msg.k, v: msg.v });
-      for (const peer of this.state.getWebSockets()) {
-        if (peer !== ws) {
-          try {
-            peer.send(out);
-          } catch {}
-        }
-      }
+      this.broadcast(ws, JSON.stringify({ t: "set", k: msg.k, v: msg.v }));
+      return;
     }
+
+    // Transient performance events: authed-only, broadcast to peers, never
+    // persisted and never replayed to late joiners (so a flare doesn't fire on
+    // someone who joins minutes later).
+    if (msg.t === "ev") {
+      if (!this.isAuthed(ws)) {
+        ws.send(JSON.stringify({ t: "error", e: "unauthorized" }));
+        return;
+      }
+      if (!validEvent(msg)) return;
+      this.broadcast(ws, JSON.stringify(msg));
+    }
+  }
+
+  isAuthed(ws) {
+    const att = ws.deserializeAttachment();
+    return !!att && att.authed === true;
   }
 
   async webSocketClose(ws, code) {

@@ -14,7 +14,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { ALLOWED_KEYS, LIMITS, validParam } from "./relay-protocol.mjs";
+import { ALLOWED_KEYS, LIMITS, TRANSIENT_LIMITS, validParam, validEvent } from "./relay-protocol.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTROL_HTML = join(here, "..", "control.html");
@@ -65,21 +65,35 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws._authed = false;
-      ws._times = [];
+      ws._times = []; // {t:"set"} rate window
+      ws._evTimes = []; // {t:"ev"} rate window
       room.clients.add(ws);
       ws.send(JSON.stringify({ t: "state", state: room.state }));
+      const sendOthers = (out) => {
+        for (const c of room.clients) {
+          if (c !== ws && c.readyState === 1) c.send(out);
+        }
+      };
       ws.on("message", (data) => {
-        const now = Date.now();
-        ws._times = ws._times.filter((t) => now - t < 1000);
-        ws._times.push(now);
-        if (ws._times.length > LIMITS.maxMsgPerSec) return;
-
         let msg;
         try {
           msg = JSON.parse(data.toString());
         } catch {
           return;
         }
+
+        // Per-type rate budgets: gesture events stream faster than params.
+        const now = Date.now();
+        if (msg.t === "ev") {
+          ws._evTimes = ws._evTimes.filter((t) => now - t < 1000);
+          ws._evTimes.push(now);
+          if (ws._evTimes.length > TRANSIENT_LIMITS.maxEvPerSec) return;
+        } else {
+          ws._times = ws._times.filter((t) => now - t < 1000);
+          ws._times.push(now);
+          if (ws._times.length > LIMITS.maxMsgPerSec) return;
+        }
+
         if (msg.t === "auth") {
           ws._authed = typeof key === "string" && key.length > 0 && msg.key === key;
           ws.send(JSON.stringify({ t: "auth", ok: ws._authed }));
@@ -92,10 +106,17 @@ export function startRelay({ port = 8787, key = process.env.RELAY_KEY } = {}) {
           }
           if (!ALLOWED_KEYS.has(msg.k) || !validParam(msg.k, msg.v)) return;
           room.state[msg.k] = msg.v;
-          const out = JSON.stringify({ t: "set", k: msg.k, v: msg.v });
-          for (const c of room.clients) {
-            if (c !== ws && c.readyState === 1) c.send(out);
+          sendOthers(JSON.stringify({ t: "set", k: msg.k, v: msg.v }));
+          return;
+        }
+        // Transient performance events: authed-only, broadcast, never persisted.
+        if (msg.t === "ev") {
+          if (!ws._authed) {
+            ws.send(JSON.stringify({ t: "error", e: "unauthorized" }));
+            return;
           }
+          if (!validEvent(msg)) return;
+          sendOthers(JSON.stringify(msg));
         }
       });
       const drop = () => room.clients.delete(ws);

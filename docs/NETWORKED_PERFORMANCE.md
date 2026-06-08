@@ -1,9 +1,10 @@
 # Networked Performance
 
-Control the instrument on remote displays (an iPad, an audience's phones) from a
-laptop, over the internet. Only **control state** is broadcast — each device
-renders audio and visuals locally from the shared parameters, so bandwidth is
-tiny and every device runs at full quality.
+Drive the instrument on remote displays (an iPad, an audience's phones) from a
+laptop or the iPad itself, over the internet. Only **control** crosses the
+network — shared parameters, and in broadcast mode the performer's live gestures
+— never audio or video. Each device renders locally, so bandwidth is tiny and
+every device runs at full quality.
 
 ## Run it
 
@@ -11,23 +12,36 @@ tiny and every device runs at full quality.
   `https://geno-2.tre.systems/?mode=display&room=<room>` — tap once to start
   audio. The UI is hidden; it just follows.
 - **Control (laptop):** `https://geno-2.tre.systems/control` — enter the room and
-  the control key, then Connect.
+  the control key, then Connect. Sliders for tempo, detune, root, scale, seed,
+  master, and pause.
+- **Broadcast (perform from the iPad):**
+  `https://geno-2.tre.systems/?mode=broadcast&room=<room>` — play the full
+  instrument. A panel (top-right) takes the control key; once connected, your
+  taps, drags, and multi-finger gestures (flares, carves, ripples, and the
+  pointer swirl) stream to every display in the room, which reproduce them
+  locally — sound and picture. Parameter changes (from gestures or the keyboard)
+  broadcast too, so displays stay in the same key and tempo.
 
 Both default to room `main`. Any number of displays can join a room; new joiners
-catch up to the current state immediately.
+catch up to the current parameter state immediately (gestures are live-only).
 
 ## Security model
 
 The relay is a public WebSocket endpoint (a Cloudflare Durable Object), so it is
 locked down by default:
 
-- **Control requires the shared secret `RELAY_KEY`.** Sockets that do not
-  authenticate are read-only viewers. **If `RELAY_KEY` is unset, control is
-  disabled entirely (fail closed)** — displays still render, but nobody can drive
-  the instrument.
-- Per-room connection cap (200), per-socket message rate limit (16/s) and size
-  limit (1 KB), a strict parameter whitelist with range checks, and throttled
-  storage writes — together these bound abuse and cost.
+- **Control and broadcast require the shared secret `RELAY_KEY`.** Sockets that
+  do not authenticate are read-only viewers. **If `RELAY_KEY` is unset, control
+  is disabled entirely (fail closed)** — displays still render, but nobody can
+  drive the instrument.
+- **Gestures ride a separate transient channel (`{t:"ev"}`):** authed-only like
+  control, broadcast to the room but **never persisted or replayed** to late
+  joiners, with its own higher per-socket rate budget (a gesture stream is faster
+  than slider changes; the broadcaster coalesces its output to fit). Payloads are
+  tiny uv-anchored events.
+- Per-room connection cap (200), per-socket message rate + size (1 KB) limits, a
+  strict parameter whitelist with range checks, and throttled storage writes —
+  together these bound abuse and cost.
 - Cross-origin browser connections are rejected.
 
 The local dev relay (`scripts/relay.mjs`) mirrors the same protocol, auth, and

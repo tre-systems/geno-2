@@ -8,7 +8,7 @@
 
 | Layer        | Choice                                  | Notes                                                            |
 | ------------ | --------------------------------------- | --------------------------------------------------------------- |
-| Language     | Rust (edition 2021)                     | 22 modules + 2 WGSL shaders, one crate (`app-web`)       |
+| Language     | Rust (edition 2021)                     | 23 modules + 2 WGSL shaders, one crate (`app-web`)       |
 | GPU          | `wgpu` 29 (WebGPU)                      | Fullscreen waves pass + bloom/composite; no WebGL fallback      |
 | Shaders      | WGSL                                    | `waves.wgsl` (scene), `post.wgsl` (bright-pass, blur, composite) |
 | Audio        | WebAudio via `web-sys`                  | Procedural synthesis + FX graph; no audio samples shipped       |
@@ -29,6 +29,7 @@ src/
 ├── instrument.rs     # Shared default instrument (voices, tempo, scale, seed) used by realtime + offline
 ├── offline.rs        # Headless deterministic render to a 32-bit WAV under an OfflineAudioContext
 ├── control.rs        # Exported setters (bpm/detune/root/scale/seed/paused/volume) for networked + display-mode control
+├── perf.rs           # Gesture bridge: broadcast mode records gestures; display mode reproduces flares/carves/ripples/swirl
 ├── frame.rs          # FrameContext + per-frame update (schedule → swirl → FX → spatialize → render); the rAF driver
 ├── audio.rs          # WebAudio graph: master FX buses (tone, saturation, compressor, reverb, delay), per-voice strips, note trigger
 ├── input.rs          # Input state (mouse, drag, multitouch) + pointer→pixel/uv helpers + multitouch geometry
@@ -182,8 +183,9 @@ The instrument can be driven remotely: a performer panel sends parameter changes
 
 - **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.
 - **Performer panel.** `control.html` (`/control`) sends tempo, detune, root, scale, seed, master volume, and pause.
-- **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`.
-- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients); `{t:"state",state}` (sent on join). **Control requires the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). The whitelist, validation, and limits live once in `scripts/relay-protocol.mjs`, imported by both the worker and the node relay. See [Networked Performance](NETWORKED_PERFORMANCE.md).
+- **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`. A display also applies incoming gesture events (below) via `src/perf.rs`.
+- **Broadcast performer.** `?mode=broadcast` runs the full instrument and streams the performer's *transient gestures* — flares, carve arpeggios, drag ripples, and the pointer swirl — over a `{t:"ev"}` channel, while gesture- and keyboard-driven parameter changes go over `{t:"set"}` (diffed from `control_get_state`, coalesced to fit the param budget). `src/perf.rs` records the gestures (a no-op until the broadcast is armed) and, on a display, reproduces each through the same engine + renderer (`perf_flare`/`perf_carve`/`perf_ripple`/`perf_apply_swirl`), reusing the chord helpers in `audio.rs` and the existing swirl/ripple pipeline — so multi-finger gestures land as authoritative parameters (no per-client re-decode) while the visual/audible layer mirrors locally.
+- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients, persisted); `{t:"ev",e,…}` (authed-only transient gestures, broadcast but **never persisted or replayed**, on a separate higher rate budget); `{t:"state",state}` (sent on join). **Control and broadcast require the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). The whitelist, event/param validation, and limits live once in `scripts/relay-protocol.mjs`, imported by both the worker and the node relay. See [Networked Performance](NETWORKED_PERFORMANCE.md).
 
 ## Build & Deploy
 

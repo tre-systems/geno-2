@@ -244,6 +244,19 @@ async fn init() -> anyhow::Result<()> {
                 queued_ripple_uv: queued_ripple_uv.clone(),
             });
 
+            // Networked-performance bridge: lets ?mode=broadcast stream this
+            // app's gestures, and ?mode=display reproduce a performer's.
+            crate::perf::install(
+                canvas_for_click.clone(),
+                engine.clone(),
+                mouse_state.clone(),
+                voice_gains.clone(),
+                delay_sends.clone(),
+                reverb_sends.clone(),
+                audio_ctx.clone(),
+                queued_ripple_uv.clone(),
+            );
+
             // Scheduler + renderer loop driven by requestAnimationFrame
             let frame_ctx = Rc::new(RefCell::new(frame::FrameContext {
                 engine: engine.clone(),

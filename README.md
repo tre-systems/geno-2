@@ -49,18 +49,16 @@ Rust + WebAssembly + WebGPU (`wgpu`) + WebAudio, built with `wasm-pack` and serv
 
 ### Touch (iPad / mobile)
 
-- `2-finger pinch`: adjust BPM (spread = faster, pinch = slower)
-- `2-finger rotate`: adjust detune (twist clockwise = sharp, counter-clockwise = flat)
-- `3-finger swipe left/right`: cycle root note (circle-of-fifths order)
-- `3-finger swipe up/down`: cycle scale mode (Ionian through Locrian)
-- `4-finger tap`: randomize root + mode + reseed all voices
-- `5-finger tap`: toggle pause/resume
+- `1-finger tap`: flare chord stack + visible shockwave
+- `1-finger hold + drag`: carve the field, bend tempo/detune, move voices, and drop into a new root/mode on release
+- `2+ fingers touch + drag`: continuous performance surface; every active finger is drawn into the shader, the centroid steers the swirl, spread nudges tempo, rotation bends detune, and finger count/depth open the visual/audio energy
+- `2+ fingers release`: ends the surface cleanly with a soft ripple, without randomizing, pausing, or reseeding
 
-## Networked control & offline render
+## Control panel & offline render
 
-The same engine runs two more ways (details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#networked-control)):
+The same engine also supports a separate panel and offline rendering (details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#control-panel)):
 
-- **Networked control** — open `/control` (the performer panel) on one device and `/?mode=display` on another; parameter changes broadcast over a Cloudflare Durable Object relay, and every display client renders locally from the shared state. `npm run relay` runs a local relay for development.
+- **Separate control panel** — open `/` for the instrument and `/control` in another same-origin tab/window. The panel shows a random code; press `H` on the instrument and enter that code in the bottom-right control panel area to link it. With no linked panel, all controls stay local.
 - **Offline render** — `node scripts/render-offline.mjs` renders a seed to a deterministic 32-bit-float WAV under an `OfflineAudioContext`, faster than realtime.
 
 ## Documentation

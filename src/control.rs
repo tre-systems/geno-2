@@ -1,7 +1,7 @@
-//! Realtime control surface for the networked-performance display client.
+//! Realtime control surface for the separate browser control panel.
 //!
-//! In `display` mode the browser receives parameter broadcasts from the relay
-//! and calls these exported setters, which mutate the live engine / audio graph
+//! The `/control` page sends same-origin browser messages to the surface page,
+//! which calls these exported setters to mutate the live engine / audio graph
 //! that `wasm_app` installed. Everything is a safe no-op until `install` runs.
 
 use crate::core::{scale_for_name, scale_name, Bpm, Cents, MusicEngine};
@@ -101,7 +101,7 @@ pub fn control_set_volume(value: f32) {
     });
 }
 
-/// Current engine parameters as JSON — for the display to reflect, and for tests.
+/// Current engine parameters as JSON — for the control panel to reflect, and for tests.
 #[wasm_bindgen]
 pub fn control_get_state() -> String {
     let mut out = String::from("{}");

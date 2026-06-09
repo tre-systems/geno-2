@@ -21,6 +21,10 @@ struct WaveUniforms {
     ripple_uv: vec2<f32>,
     ripple_t0: f32,
     ripple_amp: f32,
+    touches: array<vec4<f32>, 5>,
+    touch_count: f32,
+    touch_energy: f32,
+    _pad: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: WaveUniforms;
@@ -60,6 +64,13 @@ fn rot(a: f32) -> mat2x2<f32> {
         vec2<f32>(c, -s),
         vec2<f32>(s, c),
     );
+}
+
+fn sd_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
+    return length(pa - ba * h);
 }
 
 // Integer (PCG) hash — the same uniform [0,1) noise as fract(sin(...)) but
@@ -110,6 +121,22 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     p = swirl_center + rot(swirl_ang) * dv_swirl;
     let swirl_pull = u.swirl_active * u.swirl_strength * 0.06 * exp(-3.0 * swirl_r);
     p -= normalize(dv_swirl + vec2<f32>(1e-4, -1e-4)) * swirl_pull;
+
+    // Direct finger feedback: each active touch gently dents the field at its
+    // real screen position before the kaleidoscope fold, so the visible shader
+    // movement tracks the performer's fingers rather than only the centroid.
+    for (var i = 0; i < 5; i = i + 1) {
+        if (f32(i) < u.touch_count) {
+            let touch = u.touches[i];
+            let tc = (touch.xy - 0.5) * vec2<f32>(aspect, 1.0);
+            let tv = p - tc;
+            let td = length(tv);
+            let press = touch.z * (0.25 + 0.75 * clamp(u.touch_energy, 0.0, 1.0));
+            let pull = press * exp(-5.2 * td) * 0.030;
+            let twist = press * exp(-4.4 * td) * 0.10 * sin(t * 1.7 + touch.w * 1.9);
+            p = tc + rot(twist) * tv - normalize(tv + vec2<f32>(1e-4, 1e-4)) * pull;
+        }
+    }
 
     // Kaleidoscope fold (12 sectors) produces a faceted look unlike wave fields.
     let sector = tau / 12.0;
@@ -201,6 +228,34 @@ fn fs_waves(inp: VsOut) -> @location(0) vec4<f32> {
     let ray_ang = atan2(rv.y, rv.x);
     let rays = pow(abs(cos(ray_ang * 11.0 - age * 6.2)), 15.0);
     col += vec3<f32>(0.82, 0.96, 1.00) * rays * exp(-3.0 * rr) * u.ripple_amp * exp(-1.25 * age) * 0.56;
+
+    // Active touch markers are drawn in screen space so they appear exactly
+    // under the performer's fingers in recordings.
+    let screen_p = (uv - 0.5) * vec2<f32>(aspect, 1.0);
+    for (var i = 0; i < 5; i = i + 1) {
+        if (f32(i) < u.touch_count) {
+            let touch = u.touches[i];
+            let tp = (touch.xy - 0.5) * vec2<f32>(aspect, 1.0);
+            let d = length(screen_p - tp);
+            let core = exp(-220.0 * d * d);
+            let ring = exp(-520.0 * pow(abs(d - 0.055), 2.0));
+            let ray = pow(abs(cos(atan2(screen_p.y - tp.y, screen_p.x - tp.x) * 8.0 + t * 1.6 + touch.w)), 18.0)
+                * exp(-3.8 * d);
+            let warmth = 0.45 + 0.55 * fract(touch.w * 0.37);
+            let touch_col = mix(vec3<f32>(0.52, 0.95, 0.90), vec3<f32>(1.00, 0.68, 0.42), warmth);
+            col += touch_col * (core * 0.92 + ring * 0.28 + ray * 0.08)
+                * (0.42 + 0.58 * clamp(u.touch_energy, 0.0, 1.0));
+        }
+    }
+    for (var i = 0; i < 4; i = i + 1) {
+        if (f32(i + 1) < u.touch_count) {
+            let a = (u.touches[i].xy - 0.5) * vec2<f32>(aspect, 1.0);
+            let b = (u.touches[i + 1].xy - 0.5) * vec2<f32>(aspect, 1.0);
+            let d = sd_segment(screen_p, a, b);
+            let line = exp(-2400.0 * d * d);
+            col += vec3<f32>(0.72, 0.98, 0.95) * line * (0.045 + 0.090 * clamp(u.touch_energy, 0.0, 1.0));
+        }
+    }
 
     let vignette = 1.0 - smoothstep(0.34, 1.10, length((uv - 0.5) * vec2<f32>(1.2, 1.0)));
     col *= mix(0.58, 1.06, vignette);

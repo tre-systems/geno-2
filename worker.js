@@ -198,10 +198,15 @@ export default {
       return env.ROOM.get(env.ROOM.idFromName(room[1])).fetch(request);
     }
 
-    const response = await env.ASSETS.fetch(request);
+    const assetUrl = new URL(request.url);
+    if (assetUrl.pathname === "/control") assetUrl.pathname = "/control.html";
+    const assetRequest =
+      assetUrl.toString() === request.url ? request : new Request(assetUrl, request);
+
+    const response = await env.ASSETS.fetch(assetRequest);
     if (!response.ok) return response;
     const res = new Response(response.body, response);
-    const path = url.pathname;
+    const path = assetUrl.pathname;
     const versioned = url.searchParams.has("v");
 
     if (versioned && (path.endsWith(".wasm") || path.endsWith(".js"))) {

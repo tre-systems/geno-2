@@ -1,4 +1,4 @@
-use app_web::input::{MultiTouchState, TouchGestureKind};
+use app_web::input::{MultiTouchState, TouchGestureKind, MAX_TOUCH_POINTS};
 
 /// Build a state with the given pointers, in `(id, [x, y])` form.
 fn mt_with(pointers: &[(i32, [f32; 2])]) -> MultiTouchState {
@@ -18,13 +18,7 @@ fn gesture_kind_default_is_none() {
 
 #[test]
 fn gesture_kinds_are_distinct() {
-    let kinds = [
-        TouchGestureKind::None,
-        TouchGestureKind::TwoFingerPinchRotate,
-        TouchGestureKind::ThreeFingerSwipe,
-        TouchGestureKind::FourFingerTap,
-        TouchGestureKind::FiveFingerTap,
-    ];
+    let kinds = [TouchGestureKind::None, TouchGestureKind::PerformanceSurface];
     for (i, a) in kinds.iter().enumerate() {
         for (j, b) in kinds.iter().enumerate() {
             if i == j {
@@ -44,7 +38,8 @@ fn multitouch_state_default_is_empty() {
     assert!(mt.pointers.is_empty());
     assert_eq!(mt.gesture_kind, TouchGestureKind::None);
     assert_eq!(mt.peak_pointer_count, 0);
-    assert!(!mt.gesture_committed);
+    assert_eq!(mt.motion_px, 0.0);
+    assert_eq!(mt.last_ripple_motion, 0.0);
 }
 
 #[test]
@@ -226,14 +221,15 @@ fn centroid_uv_clamps_to_unit_range() {
 #[test]
 fn reset_gesture_clears_state_but_keeps_pointers() {
     let mut mt = mt_with(&[(1, [100.0, 200.0]), (2, [300.0, 400.0])]);
-    mt.gesture_kind = TouchGestureKind::TwoFingerPinchRotate;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.peak_pointer_count = 2;
     mt.initial_distance = 250.0;
     mt.initial_angle = 1.5;
     mt.initial_bpm = 120.0;
     mt.initial_detune = 50.0;
     mt.initial_centroid = [200.0, 300.0];
-    mt.gesture_committed = true;
+    mt.motion_px = 123.0;
+    mt.last_ripple_motion = 88.0;
     mt.current_centroid = Some([200.0, 300.0]);
 
     mt.reset_gesture();
@@ -247,7 +243,8 @@ fn reset_gesture_clears_state_but_keeps_pointers() {
     assert_eq!(mt.initial_detune, 0.0);
     assert_eq!(mt.initial_centroid, [0.0, 0.0]);
     assert!(mt.current_centroid.is_none());
-    assert!(!mt.gesture_committed);
+    assert_eq!(mt.motion_px, 0.0);
+    assert_eq!(mt.last_ripple_motion, 0.0);
 }
 
 // ────────────────── current_centroid ──────────────────
@@ -264,7 +261,7 @@ fn current_centroid_tracks_pointer_movement() {
         (2, [300.0, 200.0]),
         (3, [200.0, 400.0]),
     ]);
-    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
 
     mt.current_centroid = mt.centroid_px();
     let c = mt.current_centroid.unwrap();
@@ -288,7 +285,7 @@ fn current_centroid_preferred_over_fallback() {
         (2, [300.0, 200.0]),
         (3, [200.0, 400.0]),
     ]);
-    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.current_centroid = mt.centroid_px();
 
     let fallback = [999.0, 999.0];
@@ -311,21 +308,21 @@ fn simulate_two_finger_gesture_lifecycle() {
         "one finger has no metric"
     );
 
-    // Second finger down → start the pinch/rotate gesture.
+    // Second finger down → start the continuous performance surface.
     mt.pointers.insert(2, [500.0, 300.0]);
     mt.peak_pointer_count = 2;
-    mt.gesture_kind = TouchGestureKind::TwoFingerPinchRotate;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
 
     let (dist, _angle) = mt.two_finger_metrics().unwrap();
     mt.initial_distance = dist;
     assert!((dist - 400.0).abs() < 0.1);
 
-    // Pinch inward: the distance ratio halves.
+    // Spread inward: the distance ratio halves.
     mt.pointers.insert(1, [200.0, 300.0]);
     mt.pointers.insert(2, [400.0, 300.0]);
     let (new_dist, _) = mt.two_finger_metrics().unwrap();
     let ratio = new_dist / mt.initial_distance;
-    assert!((ratio - 0.5).abs() < 0.01, "pinch ratio should be 0.5");
+    assert!((ratio - 0.5).abs() < 0.01, "spread ratio should be 0.5");
 
     // Both fingers lift, then the gesture resets.
     mt.pointers.remove(&2);
@@ -337,20 +334,20 @@ fn simulate_two_finger_gesture_lifecycle() {
 }
 
 #[test]
-fn simulate_three_finger_horizontal_swipe() {
+fn simulate_three_finger_horizontal_motion() {
     let mut mt = mt_with(&[
         (1, [100.0, 300.0]),
         (2, [200.0, 300.0]),
         (3, [300.0, 300.0]),
     ]);
-    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.peak_pointer_count = 3;
 
     mt.initial_centroid = mt.centroid_px().unwrap();
     assert!((mt.initial_centroid[0] - 200.0).abs() < 0.01);
     assert!((mt.initial_centroid[1] - 300.0).abs() < 0.01);
 
-    // Swipe right: every finger moves +100px in X.
+    // Move right: every finger moves +100px in X.
     mt.pointers.insert(1, [200.0, 300.0]);
     mt.pointers.insert(2, [300.0, 300.0]);
     mt.pointers.insert(3, [400.0, 300.0]);
@@ -364,17 +361,17 @@ fn simulate_three_finger_horizontal_swipe() {
 }
 
 #[test]
-fn simulate_three_finger_vertical_swipe() {
+fn simulate_three_finger_vertical_motion() {
     let mut mt = mt_with(&[
         (1, [300.0, 100.0]),
         (2, [300.0, 200.0]),
         (3, [300.0, 300.0]),
     ]);
-    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.peak_pointer_count = 3;
     mt.initial_centroid = mt.centroid_px().unwrap();
 
-    // Swipe down: every finger moves +80px in Y.
+    // Move down: every finger moves +80px in Y.
     mt.pointers.insert(1, [300.0, 180.0]);
     mt.pointers.insert(2, [300.0, 280.0]);
     mt.pointers.insert(3, [300.0, 380.0]);
@@ -389,58 +386,44 @@ fn simulate_three_finger_vertical_swipe() {
 #[test]
 fn simulate_gesture_upgrade_two_to_three_fingers() {
     let mut mt = mt_with(&[(1, [100.0, 200.0]), (2, [300.0, 200.0])]);
-    mt.gesture_kind = TouchGestureKind::TwoFingerPinchRotate;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.peak_pointer_count = 2;
 
-    // Third finger arrives → upgrade to a three-finger swipe.
+    // Third finger arrives and stays on the same continuous surface.
     mt.pointers.insert(3, [200.0, 400.0]);
-    mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
+    mt.gesture_kind = TouchGestureKind::PerformanceSurface;
     mt.peak_pointer_count = 3;
     mt.initial_centroid = mt.centroid_px().unwrap();
 
-    assert_eq!(mt.gesture_kind, TouchGestureKind::ThreeFingerSwipe);
+    assert_eq!(mt.gesture_kind, TouchGestureKind::PerformanceSurface);
     assert_eq!(mt.peak_pointer_count, 3);
     assert!(mt.centroid_px().is_some());
 }
 
 #[test]
-fn four_finger_gesture_commits_once() {
-    let mut mt = mt_with(&[
-        (1, [100.0, 100.0]),
-        (2, [200.0, 100.0]),
-        (3, [300.0, 100.0]),
-        (4, [400.0, 100.0]),
-    ]);
+fn touch_points_uv_are_sorted_and_normalized() {
+    let mt = mt_with(&[(20, [800.0, 600.0]), (10, [0.0, 0.0]), (15, [400.0, 300.0])]);
 
-    assert!(!mt.gesture_committed);
-    mt.gesture_kind = TouchGestureKind::FourFingerTap;
-    mt.gesture_committed = true;
+    let (points, count) = mt.touch_points_uv(800.0, 600.0);
 
-    // A 5th finger must not re-commit an already-committed gesture.
-    mt.pointers.insert(5, [500.0, 100.0]);
-    assert!(mt.gesture_committed);
+    assert_eq!(count, 3);
+    assert_eq!(points[0], [0.0, 0.0, 1.0, 0.0]);
+    assert_eq!(points[1], [0.5, 0.5, 1.0, 1.0]);
+    assert_eq!(points[2], [1.0, 1.0, 1.0, 2.0]);
 }
 
 #[test]
-fn five_finger_gesture_lifecycle() {
+fn touch_points_uv_caps_at_shader_limit() {
     let mut mt = MultiTouchState::default();
-    for i in 1..=5 {
-        mt.pointers.insert(i, [i as f32 * 100.0, 300.0]);
+    for i in 1..=8 {
+        mt.pointers.insert(i, [i as f32 * 10.0, 300.0]);
     }
-    mt.peak_pointer_count = 5;
-    mt.gesture_kind = TouchGestureKind::FiveFingerTap;
-    mt.gesture_committed = true;
 
-    assert_eq!(mt.pointers.len(), 5);
-    assert_eq!(mt.gesture_kind, TouchGestureKind::FiveFingerTap);
+    let (points, count) = mt.touch_points_uv(800.0, 600.0);
 
-    for i in 1..=5 {
-        mt.pointers.remove(&i);
-    }
-    assert!(mt.pointers.is_empty());
-    mt.reset_gesture();
-    assert_eq!(mt.gesture_kind, TouchGestureKind::None);
-    assert!(!mt.gesture_committed);
+    assert_eq!(MAX_TOUCH_POINTS, 5);
+    assert_eq!(count, MAX_TOUCH_POINTS);
+    assert_eq!(points[4][3], 4.0);
 }
 
 // ────────────────── edge cases ──────────────────

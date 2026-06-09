@@ -1,6 +1,6 @@
 # Geno-2 — Architecture
 
-> Scope: how the code is organized and how one frame of audio + video is produced. Geno-2 is a single Rust crate (`app-web`) compiled to WebAssembly: a generative music engine, a WebAudio FX graph, and a fullscreen WebGPU shader, wired together by one `requestAnimationFrame` loop. The same engine also drives two headless surfaces — an **offline render** (deterministic WAV export) and **networked control** (a relay broadcasts a performer's parameter changes to display clients) — documented in their own sections below.
+> Scope: how the code is organized and how one frame of audio + video is produced. Geno-2 is a single Rust crate (`app-web`) compiled to WebAssembly: a generative music engine, a WebAudio FX graph, and a fullscreen WebGPU shader, wired together by one `requestAnimationFrame` loop. The same engine also drives the default **instrument surface**, a separate **control panel**, and an **offline render** (deterministic WAV export), documented in their own sections below.
 
 ![System overview](diagrams/system-overview.png)
 
@@ -16,7 +16,7 @@
 | RNG          | `rand` (`StdRng`) + `getrandom` (`js`)  | Per-voice seeded generators                                     |
 | WASM         | `wasm-bindgen` + `web-sys`              | Canvas, pointer/keyboard events, `requestAnimationFrame`        |
 | Build        | `wasm-pack` (`--target web`)            | Emits `pkg/app_web.js` + `app_web_bg.wasm`, copied into `dist/` |
-| Host         | Cloudflare Workers (`wrangler`)         | `worker.js` serves `dist/`; a Room Durable Object relays control |
+| Host         | Cloudflare Workers (`wrangler`)         | `worker.js` serves `dist/`                                      |
 
 The toolchain is plain `stable` (`rust-toolchain.toml`) — no nightly, no threads.
 
@@ -28,8 +28,8 @@ src/
 ├── wasm_app.rs       # Composition root: build AudioContext + engine + FX + voices + GPU, wire events, start the loop
 ├── instrument.rs     # Shared default instrument (voices, tempo, scale, seed) used by realtime + offline
 ├── offline.rs        # Headless deterministic render to a 32-bit WAV under an OfflineAudioContext
-├── control.rs        # Exported setters (bpm/detune/root/scale/seed/paused/volume) for networked + display-mode control
-├── perf.rs           # Gesture bridge: broadcast mode records gestures; display mode reproduces flares/carves/ripples/swirl
+├── control.rs        # Exported setters (bpm/detune/root/scale/seed/paused/volume/start) for the separate control panel
+├── perf.rs           # Optional gesture bridge retained for relay tooling
 ├── frame.rs          # FrameContext + per-frame update (schedule → swirl → FX → spatialize → render); the rAF driver
 ├── audio.rs          # WebAudio graph: master FX buses (tone, saturation, compressor, reverb, delay), per-voice strips, note trigger
 ├── input.rs          # Input state (mouse, drag, multitouch) + pointer→pixel/uv helpers + multitouch geometry
@@ -49,16 +49,16 @@ src/
     ├── mod.rs        # Event-wiring re-exports
     ├── keyboard.rs   # keydown: root/mode/preset/tempo/detune/volume/mute/fullscreen
     ├── keymap.rs     # key→root MIDI and digit→mode/tuning tables (host-testable)
-    └── pointer.rs    # Pointer + multitouch gestures: flare / carve / carve-drop + 2–5-finger
+    └── pointer.rs    # Pointer + multitouch gestures: flare / carve / carve-drop + continuous multi-finger surface
 shaders/
-├── waves.wgsl        # Fullscreen scene: swirl displacement, per-voice influence, ripple propagation
+├── waves.wgsl        # Fullscreen scene: swirl displacement, per-voice influence, touch marks, ripple propagation
 └── post.wgsl         # Bright-pass, separable blur, ACES tonemap composite, vignette, grain
-index.html            # Canvas + start/hint overlays + WebGPU/Audio error UI; ?mode=display bootstrap
-control.html          # Performer panel (/control): tempo, detune, root, scale, seed, master, pause
+index.html            # Default instrument surface + help/pairing overlays + WebGPU/Audio error UI
+control.html          # Separate panel (/control): pairing code, tempo, detune, root, scale, seed, master, pause
 offline.html          # Headless harness that drives the offline WAV render
-worker.js             # Cloudflare asset worker (versioned-asset cache) + Room Durable Object relay (/room/<id>)
+worker.js             # Cloudflare asset worker (versioned-asset cache)
 scripts/gen-env.js    # Stamps pkg/env.js with the build's git short SHA
-scripts/relay.mjs     # Node dev relay (the Durable Object's logic for local use)
+scripts/relay.mjs     # Optional Node dev relay for legacy relay tooling
 scripts/render-offline.mjs  # Drives the offline WAV render in headless Chrome
 web-test.js           # Puppeteer smoke test (boot, WebGPU, keyboard, FPS)
 ```
@@ -73,7 +73,7 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Single composition root + self-scheduling loop.** `wasm_app::init` (one `#[wasm_bindgen(start)]` export, via `lib.rs`) builds every subsystem — AudioContext, `MusicEngine`, the FX graph, voice routing, `GpuState`, and the event handlers — then hands a `FrameContext` to `frame::start_loop`, which arms a `requestAnimationFrame` callback that re-arms itself each frame. Shared mutable state is `Rc<RefCell<…>>` (the single-threaded-WASM idiom; no `static mut`).
 
-**Deferred input: accumulate, then drain.** DOM pointer/keyboard handlers write into shared `MouseState` / `DragState` / `MultiTouchState`. The frame loop reads that state once per frame, decaying gesture energy/flash/spin exponentially. Edge events (taps, carve ripples) are pushed onto a one-slot `queued_ripple_uv` and drained by the renderer, decoupling bursty event delivery from the synchronous frame.
+**Deferred input: accumulate, then drain.** DOM pointer/keyboard handlers write into shared `MouseState` / `DragState` / `MultiTouchState`. The frame loop reads that state once per frame, decaying gesture energy/flash/spin exponentially and sending active touch points to the shader as visible performance marks. Edge events (taps, carve ripples, touch-surface ripples) are pushed onto a one-slot `queued_ripple_uv` and drained by the renderer, decoupling bursty event delivery from the synchronous frame.
 
 **Procedural everything (no assets).** The reverb impulse response is generated at runtime (seeded xorshift noise × an exponential decay envelope), the saturation curve is an arctan lookup table, and each voice's timbre is an oscillator plus a slightly detuned chorus oscillator. Nothing but code and shaders ships.
 
@@ -99,7 +99,7 @@ Most files are an instance of one of a handful of recurring idioms; naming them 
 
 **Named tuning constants.** Smoothing time-constants, the swirl spring, FX-mapping weights, and per-voice send curves live as named constants in `constants.rs`; the audio FX design and per-note synthesis are named at the top of `audio.rs`; and the generative weights and thresholds are named in `core/music.rs`. Tuning lives in legible blocks rather than scattered literals (the per-waveform synthesis profiles and per-voice generative profiles stay inline as match arms — see *Patterns to adopt*).
 
-**Fail-closed control gate.** The networked relay treats control as a capability that is off by default: a socket must present the shared `RELAY_KEY` to send parameters, unauthenticated sockets are read-only, and if the secret is unconfigured nobody can control at all. Paired with a parameter whitelist and per-socket rate/size/connection limits, the public endpoint can be hijacked or abused only within tight, bounded limits (see *Networked Control*).
+**Off-screen control surface.** `/control` is a separate same-origin page, not an overlay inside the performance canvas. It shows a random pairing code and sends `{t:"set",k,v,code}` messages over `BroadcastChannel` with a `localStorage` fallback; `index.html` ignores panel messages until the matching code is entered in the help panel, then applies them through `src/control.rs` and reflects state back to the panel. Settings can change while the default instrument route stays visually clean for capture.
 
 ## Patterns to Adopt
 
@@ -117,11 +117,11 @@ A single `requestAnimationFrame` callback (`FrameContext::frame`) runs three pha
 2. **Couple state to audio + visuals** —
    - drain the notes whose time has now arrived and bump their voices' pulse energy, so the picture pulses *with* what's audible rather than ~120 ms early;
    - smooth the per-voice pulse energies; decay gesture energy/flash/spin;
-   - update the inertial **swirl** from the pointer (or multitouch centroid) — a damped spring in UV space;
+   - update the inertial **swirl** from the pointer or multitouch centroid — a damped spring in UV space;
    - modulate the **global FX** (reverb wet, delay wet/feedback, saturation drive/mix) from swirl energy, gesture flash, and pointer position;
    - push each voice's engine position into its `PannerNode`, and set its delay/reverb sends and level from distance;
    - align the `AudioListener` to the fixed camera.
-3. **Render** — feed the ambient clear color, any queued ripple, and the smoothed swirl strength into `GpuState`, then `render()` (waves → bloom → composite).
+3. **Render** — feed the ambient clear color, active touch points, any queued ripple, and the smoothed swirl strength into `GpuState`, then `render()` (waves → bloom → composite).
 
 Loud note onsets also queue a visual ripple, so the picture pulses with the music. State lives in the engine and the GPU between frames; the loop is a tail chain of rAF calls, not a timer.
 
@@ -156,7 +156,7 @@ Pitch is `midi_to_hz` (A4 = 440) with a global **detune in cents** (±200) appli
 
 Resources: one offscreen **HDR** scene target (`Rgba16Float`) plus two half-resolution **bloom** buffers. Each frame:
 
-1. **scene pass** — clear the HDR target to a dark slate that lifts toward a teal/amber haze with ambient energy, then draw the **waves** fullscreen pass (`waves.wgsl`): layered ribbons displaced by the pointer-driven swirl, per-voice influence and pulses, and propagating click/tap ripples;
+1. **scene pass** — clear the HDR target to a dark slate that lifts toward a teal/amber haze with ambient energy, then draw the **waves** fullscreen pass (`waves.wgsl`): layered ribbons displaced by the pointer-driven swirl, per-voice influence and pulses, active touch cores/links under the performer's fingers, and propagating click/tap ripples;
 2. **bloom** — bright-pass (HDR → bloom A), separable blur (A → B horizontal, B → A vertical);
 3. **composite** — `post.wgsl` adds the bloom back, applies an ACES tonemap, vignette, and film grain, and writes the swapchain.
 
@@ -169,23 +169,20 @@ Pointer and keyboard handlers live in `events/`; the full control list is in the
 - **Tap (no drag) → flare** — a chord stack of one-shot notes plus a ripple at the cursor.
 - **Hold + drag → carve** — continuously rewrites BPM (from travel), detune (from position + rotation), and the voices' lattice positions, periodically reseeding and emitting ripples.
 - **Release after a carve → drop** — locks in a new root (from drag angle) and mode (from travel/spin), reseeds all voices, and fires an accent burst.
-- **Multitouch** (up to 5 pointers, tracked in `MultiTouchState`): 2-finger pinch→BPM / rotate→detune, 3-finger swipe→root/mode, 4-finger tap→randomize, 5-finger tap→pause.
+- **Multitouch** (up to 5 pointers, tracked in `MultiTouchState`): continuous performance surface. Every active finger is packed into the waves uniform and rendered as a touch core/link on screen. The centroid steers swirl, spread smoothly nudges BPM, rotation bends detune, and finger count/spread move voice positions without hidden randomize/pause/reseed commands.
 
 ## Offline Render
 
 `src/offline.rs` renders the instrument deterministically to a 32-bit-float stereo WAV — no canvas, audio device, or user gesture. It drives the same `MusicEngine` event stream through the same WebAudio FX graph as the realtime app, but under an `OfflineAudioContext` rendered far faster than realtime (`scripts/render-offline.mjs` runs it in headless Chrome via `offline.html`). The graph is generic over `BaseAudioContext` so one definition serves both contexts, and `trigger_one_shot` takes an explicit `now` (realtime passes the audio clock; offline passes each note's onset). `src/instrument.rs` factors the default instrument — voices, tempo, scale, seed — so realtime and offline share one definition. The offline render applies the FX graph's *baseline* parameters only — none of the realtime loop's swirl/gesture modulation, since there is no interaction — which is part of what keeps it deterministic. A given seed always renders the same piece (runs differ only by sub-perceptual convolution FP noise), ready for mastering.
 
-## Networked Control
+## Control Panel
 
-![Networked control: performer panel → relay → display clients](diagrams/networked-control.png)
+The instrument can be driven from a separate local panel without rendering controls over the performance output:
 
-The instrument can be driven remotely: a performer panel sends parameter changes over a WebSocket relay to display clients that render locally — *control* crosses the network, not audio or video, and each client renders from the shared state (e.g. a laptop driving an iPad, or an audience rendering locally).
-
-- **Relay.** `worker.js` routes `/room/<id>` WebSocket upgrades to a Room **Durable Object** (hibernatable WebSockets) that broadcasts each `{t:"set",k,v}` change and replays the accumulated state — persisted across hibernation — to late joiners. `scripts/relay.mjs` is the equivalent node relay for local dev.
-- **Performer panel.** `control.html` (`/control`) sends tempo, detune, root, scale, seed, master volume, and pause.
-- **Display client.** `?mode=display` hides the UI, connects to the relay (auto-reconnecting), applies each broadcast parameter to the live engine, and starts audio on one tap (iOS autoplay). `src/control.rs` exposes the setters (`bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, `start`) over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`. A display also applies incoming gesture events (below) via `src/perf.rs`.
-- **Broadcast performer.** `?mode=broadcast` runs the full instrument and streams the performer's *transient gestures* — flares, carve arpeggios, drag ripples, and the pointer swirl — over a `{t:"ev"}` channel, while gesture- and keyboard-driven parameter changes go over `{t:"set"}` (diffed from `control_get_state`, coalesced to fit the param budget). `src/perf.rs` records the gestures (a no-op until the broadcast is armed) and, on a display, reproduces each through the same engine + renderer (`perf_flare`/`perf_carve`/`perf_ripple`/`perf_apply_swirl`), reusing the chord helpers in `audio.rs` and the existing swirl/ripple pipeline — so multi-finger gestures land as authoritative parameters (no per-client re-decode) while the visual/audible layer mirrors locally.
-- **Protocol & access.** Messages are JSON: `{t:"auth",key}` → `{t:"auth",ok}`; `{t:"set",k,v}` (broadcast to the room's other clients, persisted); `{t:"ev",e,…}` (authed-only transient gestures, broadcast but **never persisted or replayed**, on a separate higher rate budget); `{t:"state",state}` (sent on join). **Control and broadcast require the shared secret `RELAY_KEY`** — unauthenticated sockets are read-only viewers, and if the secret is unset the relay is *fail-closed* (no control). The relay also enforces a per-room connection cap, per-socket rate and size limits, a parameter whitelist with range checks, throttled storage writes, and a same-origin check, bounding abuse and Durable Object cost (there is no hard spend cap — pair with a billing alert). The whitelist, event/param validation, and limits live once in `scripts/relay-protocol.mjs`, imported by both the worker and the node relay. See [Networked Performance](NETWORKED_PERFORMANCE.md).
+- **Instrument.** `/` opens the clean touch surface by default and shows only a tap-to-start audio unlock layer over the canvas. The help panel remains available with `H`, including the bottom-right code entry for linking a panel. If no panel is linked, keyboard, pointer, and touch controls remain local.
+- **Panel.** `control.html` (`/control`) generates a six-digit code and sends tempo, detune, root, scale, seed, master volume, and pause messages over a same-origin `BroadcastChannel`, with `localStorage` as a fallback for browser contexts that need it.
+- **Setters.** `src/control.rs` exposes `bpm`, `detune`, `root`, `scale`, `seed`, `paused`, `volume`, and `start` over handles stashed by `wasm_app`, backed by `MusicEngine::reseed_all` and `core::scale_for_name`.
+- **Pairing + state reflection.** The instrument only accepts panel messages whose `code` matches the entered pairing code. It posts `control_get_state()` back to `/control` with that same code, so the linked panel follows keyboard/touch changes without needing any visible canvas UI.
 
 ## Build & Deploy
 
@@ -198,5 +195,5 @@ The instrument can be driven remotely: a performer panel sends parameter changes
 - **No WebGL fallback.** The renderer targets WebGPU; `index.html` checks for it and shows a message rather than degrading.
 - **No AudioWorklet.** The rAF loop schedules notes ahead on the `AudioContext` clock (the two-clock lookahead — see *How a Frame Is Produced*), so onset timing is sample-accurate without a dedicated audio thread. An AudioWorklet would only be needed for custom per-sample DSP, which the graph does not do.
 - **No 3D scene / object picking.** Audio is spatialized through per-voice panners, but the voices are not interactive on-screen objects — the visuals are a screen-space shader.
-- **No server in the audio/video path.** The instrument renders and sounds entirely client-side; the only backend, the networked-control relay (a Cloudflare Durable Object), brokers small control messages and persists the room's parameter state — never audio or video (see *Networked Control*).
+- **No server in the audio/video path.** The instrument renders and sounds entirely client-side. The default control panel is same-origin browser messaging, not a server relay.
 - **No threads.** The WASM is single-threaded — no `SharedArrayBuffer`, so no cross-origin-isolation headers are needed.

@@ -243,6 +243,75 @@
       #overlay-ok:hover {
         border-color: rgba(255, 204, 156, 0.82);
       }
+      .help-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        margin-top: 12px;
+      }
+      #control-pairing {
+        display: grid;
+        gap: 6px;
+        justify-items: end;
+        min-width: min(100%, 330px);
+        text-align: right;
+      }
+      #control-pairing h3 {
+        margin: 0;
+      }
+      #control-status {
+        margin: 0;
+        color: #c9baa2;
+        font:
+          12px/1.4 "IBM Plex Mono",
+          "SF Mono",
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      .control-pair-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 7px;
+      }
+      #control-code {
+        width: 104px;
+        appearance: none;
+        border: 1px solid rgba(239, 185, 132, 0.44);
+        border-radius: 4px;
+        background: rgba(18, 14, 24, 0.84);
+        color: #f4e7d6;
+        padding: 8px 10px;
+        font:
+          650 14px "IBM Plex Mono",
+          "SF Mono",
+          Menlo,
+          Consolas,
+          monospace;
+        letter-spacing: 0.08em;
+      }
+      #control-code::placeholder {
+        color: rgba(201, 186, 162, 0.64);
+        letter-spacing: 0;
+      }
+      #control-connect,
+      #control-open {
+        appearance: none;
+        border: 1px solid rgba(144, 213, 219, 0.42);
+        background:
+          linear-gradient(180deg, rgba(33, 45, 55, 0.96), rgba(18, 25, 33, 0.92));
+        color: #e4f3f2;
+        font:
+          650 12px "Avenir Next",
+          "Gill Sans Nova",
+          "Trebuchet MS",
+          sans-serif;
+        padding: 8px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
       #audio-error,
       #no-webgpu {
         border: 1px solid rgba(186, 134, 132, 0.4);
@@ -267,15 +336,27 @@
           grid-template-columns: 1fr;
           gap: 4px;
         }
+        .help-footer {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        #control-pairing {
+          justify-items: stretch;
+          text-align: left;
+          min-width: 0;
+        }
+        .control-pair-row {
+          justify-content: flex-start;
+        }
+        #control-code {
+          flex: 1;
+          min-width: 112px;
+        }
       }
       @media (min-height: 780px) {
         #start-overlay {
           align-items: center;
         }
-      }
-      .display-mode #start-overlay,
-      .display-mode #hint-overlay {
-        display: none !important;
       }
       #display-start {
         position: fixed;
@@ -283,7 +364,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 20;
+        z-index: 8;
         color: #f3e8d8;
         font: 600 18px/1 system-ui;
         letter-spacing: 0.14em;
@@ -458,14 +539,7 @@
               </ul>
             </div>
           </div>
-          <div
-            style="
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-top: 8px;
-            "
-          >
+          <div class="help-footer">
             <a href="https://ko-fi.com/N4N31DPNUS" target="_blank"
               ><img
                 height="28"
@@ -474,7 +548,24 @@
                 border="0"
                 alt="Buy Me a Coffee at ko-fi.com"
             /></a>
-            <button id="overlay-ok">OK</button>
+            <div id="control-pairing">
+              <h3>Control Panel</h3>
+              <p id="control-status">Local controls active. Enter panel code to link.</p>
+              <div class="control-pair-row">
+                <input
+                  id="control-code"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="6"
+                  placeholder="Code"
+                  aria-label="Control panel code"
+                />
+                <button id="control-connect" type="button">Connect</button>
+                <button id="control-open" type="button">Open Panel</button>
+              </div>
+            </div>
+            <button id="overlay-ok" type="button">OK</button>
           </div>
         </div>
       </div>
@@ -539,208 +630,210 @@
           window.__geno = m;
           const params = new URLSearchParams(location.search);
           const mode = params.get("mode");
-          if (mode === "display") setupDisplay(m, params);
-          else if (mode === "broadcast") setupBroadcast(m, params);
+          setupLocalControl(m);
+          setupSurface(m);
+          if (mode === "broadcast") {
+            console.warn("[index] broadcast mode is no longer part of the performance flow; use / plus /control");
+          }
         });
       });
 
-      // Display mode: a render-only client driven by the performance relay. It
-      // hides the UI, applies broadcast parameters to the live engine, and
-      // starts audio on one tap (iOS autoplay). See control.html + scripts/relay.mjs.
-      function setupDisplay(m, params) {
-        document.documentElement.classList.add("display-mode");
-        const room = params.get("room") || "main";
-        const relay =
-          params.get("relay") ||
-          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
-        const url = `${relay.replace(/\/$/, "")}/room/${encodeURIComponent(room)}`;
+      function applyControl(m, k, val) {
+        switch (k) {
+          case "bpm": m.control_set_bpm(+val); break;
+          case "detune": m.control_set_detune(+val); break;
+          case "root": m.control_set_root(+val); break;
+          case "scale": m.control_set_scale(String(val)); break;
+          case "seed": m.control_set_seed(+val >>> 0); break;
+          case "paused": m.control_set_paused(!!val); break;
+          case "volume": m.control_set_volume(+val); break;
+        }
+      }
 
-        let last = {};
-        const apply = (k, val) => {
-          switch (k) {
-            case "bpm": m.control_set_bpm(+val); break;
-            case "detune": m.control_set_detune(+val); break;
-            case "root": m.control_set_root(+val); break;
-            case "scale": m.control_set_scale(String(val)); break;
-            case "seed": m.control_set_seed(+val >>> 0); break;
-            case "paused": m.control_set_paused(!!val); break;
-            case "volume": m.control_set_volume(+val); break;
+      function readControlState(m) {
+        try {
+          return JSON.parse(m.control_get_state());
+        } catch {
+          return {};
+        }
+      }
+
+      // Same-origin control panel bridge. /control can run in a separate tab,
+      // window, or iPad split-view; settings mutate the live engine without
+      // adding visible controls to the performance canvas.
+      function setupLocalControl(m) {
+        const channelName = "geno-2-control";
+        const channel = "BroadcastChannel" in window ? new BroadcastChannel(channelName) : null;
+        const tabId = Math.random().toString(36).slice(2);
+        const storageKey = `${channelName}-paired-code`;
+        let pairedCode = "";
+        let panelSeenAt = 0;
+
+        const normalizeCode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+        try {
+          pairedCode = normalizeCode(sessionStorage.getItem(storageKey));
+        } catch {}
+
+        const postSurfaceMessage = (msg) => {
+          if (!pairedCode) return;
+          const out = { ...msg, source: "surface", code: pairedCode, nonce: Date.now() };
+          if (channel) channel.postMessage(out);
+          try {
+            localStorage.setItem(`${channelName}-state`, JSON.stringify(out));
+          } catch {}
+        };
+
+        const updatePairingUi = (message) => {
+          const input = document.getElementById("control-code");
+          const status = document.getElementById("control-status");
+          if (input && document.activeElement !== input) input.value = pairedCode;
+          if (!status) return;
+          if (message) {
+            status.textContent = message;
+          } else if (!pairedCode) {
+            status.textContent = "Local controls active. Enter panel code to link.";
+          } else if (Date.now() - panelSeenAt < 2500) {
+            status.textContent = `Panel ${pairedCode} connected.`;
+          } else {
+            status.textContent = `Waiting for panel ${pairedCode}.`;
           }
         };
-        const applyAll = (s) => {
-          for (const k in s) apply(k, s[k]);
+
+        const markPanelSeen = () => {
+          panelSeenAt = Date.now();
+          updatePairingUi();
         };
-        // Transient performer gestures: reproduce the swirl, flares, carves, and
-        // ripples locally so the display looks and sounds like the performer's.
-        const applyEv = (e) => {
-          switch (e.e) {
-            case "swirl": m.perf_apply_swirl && m.perf_apply_swirl(+e.u, +e.v, +(e.s || 0), !!e.a); break;
-            case "flare": m.perf_flare && m.perf_flare(+e.u, +e.v); break;
-            case "carve": m.perf_carve && m.perf_carve(+e.u, +e.v, +(e.m || 0), +(e.g || 0)); break;
-            case "ripple": m.perf_ripple && m.perf_ripple(+e.u, +e.v, +(e.p || 0)); break;
+
+        const postState = () => {
+          postSurfaceMessage({ t: "state", state: readControlState(m) });
+        };
+
+        const postPair = () => {
+          postSurfaceMessage({ t: "pair" });
+          postState();
+        };
+
+        const connectCode = () => {
+          const input = document.getElementById("control-code");
+          const next = normalizeCode(input ? input.value : "");
+          if (next.length < 4) {
+            updatePairingUi("Enter the code shown on the control panel.");
+            return;
+          }
+          pairedCode = next;
+          try {
+            sessionStorage.setItem(storageKey, pairedCode);
+          } catch {}
+          panelSeenAt = 0;
+          updatePairingUi();
+          postPair();
+        };
+
+        const setupPairingUi = () => {
+          const input = document.getElementById("control-code");
+          const connect = document.getElementById("control-connect");
+          const open = document.getElementById("control-open");
+          if (input) {
+            input.value = pairedCode;
+            input.addEventListener("input", () => {
+              const cleaned = normalizeCode(input.value);
+              if (input.value !== cleaned) input.value = cleaned;
+            });
+            input.addEventListener("keydown", (ev) => {
+              ev.stopPropagation();
+              if (ev.key === "Enter") {
+                ev.preventDefault();
+                connectCode();
+              }
+            });
+          }
+          if (connect) connect.addEventListener("click", connectCode);
+          if (open) {
+            open.addEventListener("click", () => window.open("./control.html", "geno-2-control"));
+          }
+          updatePairingUi();
+          setInterval(updatePairingUi, 1000);
+        };
+
+        const isPairedControl = (msg) => pairedCode && normalizeCode(msg && msg.code) === pairedCode;
+
+        setupPairingUi();
+
+        if (pairedCode) {
+          setTimeout(postPair, 0);
+        }
+
+        const handle = (msg) => {
+          if (!msg || msg.source === "surface") return;
+          if (!isPairedControl(msg)) return;
+          markPanelSeen();
+          if (msg.t === "set") {
+            applyControl(m, msg.k, msg.v);
+            postState();
+          } else if (msg.t === "start") {
+            if (m.control_start) m.control_start();
+            postState();
+          } else if (msg.t === "request_state") {
+            postState();
           }
         };
 
-        const connect = () => {
-          const ws = new WebSocket(url);
-          ws.onopen = () => console.log("[display] connected", url);
-          ws.onmessage = (ev) => {
-            const msg = JSON.parse(ev.data);
-            if (msg.t === "state") {
-              last = msg.state || {};
-              applyAll(last);
-            } else if (msg.t === "set") {
-              last[msg.k] = msg.v;
-              apply(msg.k, msg.v);
-            } else if (msg.t === "ev") {
-              applyEv(msg);
-            }
-          };
-          ws.onclose = () => setTimeout(connect, 1500);
-          ws.onerror = () => ws.close();
-        };
-        connect();
+        if (channel) {
+          channel.onmessage = (ev) => handle(ev.data);
+        }
+        window.addEventListener("storage", (ev) => {
+          if (ev.key !== `${channelName}-command` || !ev.newValue) return;
+          try {
+            const msg = JSON.parse(ev.newValue);
+            if (msg.tabId !== tabId) handle(msg);
+          } catch {}
+        });
 
-        // wasm init via start() can lag default(); re-apply once ready.
         const whenReady = () => {
-          if (m.control_ready && m.control_ready()) applyAll(last);
+          if (m.control_ready && m.control_ready()) postState();
           else setTimeout(whenReady, 100);
         };
         whenReady();
+        setInterval(postState, 1000);
+      }
+
+      // Clean instrument surface by default; the help panel remains available
+      // via H so pairing can happen without controls appearing on the canvas.
+      function setupSurface(m) {
+        const hideHelpOverlay = () => {
+          const el = document.getElementById("start-overlay");
+          if (!el) return;
+          el.classList.add("hidden");
+          el.setAttribute("style", "display:none");
+        };
+        for (const id of ["overlay-ok", "overlay-close"]) {
+          const button = document.getElementById(id);
+          if (!button) continue;
+          button.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            if (m.control_start) m.control_start();
+            hideHelpOverlay();
+          });
+        }
+
+        const overlay = document.getElementById("start-overlay");
+        if (overlay) {
+          overlay.classList.add("hidden");
+          overlay.setAttribute("style", "display:none");
+        }
 
         const startEl = document.createElement("div");
         startEl.id = "display-start";
         startEl.textContent = "tap to start";
         document.body.appendChild(startEl);
-        window.addEventListener(
+        startEl.addEventListener(
           "pointerdown",
           () => {
             if (m.control_start) m.control_start();
-            const c = document.getElementById("app-canvas");
-            if (c && c.requestFullscreen) c.requestFullscreen().catch(() => {});
             startEl.remove();
           },
           { once: true },
         );
-      }
-
-      // Broadcast mode: the main instrument streams this performer's gestures and
-      // parameters to every display in the room. Requires the relay key (control
-      // is fail-closed). The app otherwise runs normally — the performer plays
-      // and sees the real visuals while everyone mirrors them.
-      function setupBroadcast(m, params) {
-        const room = params.get("room") || "main";
-        const relay =
-          params.get("relay") ||
-          `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
-        const url = `${relay.replace(/\/$/, "")}/room/${encodeURIComponent(room)}`;
-
-        const style = document.createElement("style");
-        style.textContent = `
-          #broadcast-panel { position: fixed; top: 12px; right: 12px; z-index: 50;
-            font: 12px/1.4 system-ui, sans-serif; color: #e9f3f2; max-width: 240px;
-            background: rgba(20,18,30,0.82); border: 1px solid #3a3248;
-            border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(6px); }
-          #broadcast-panel b { color: #f1cfab; }
-          #bc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-            background: #b55; margin-right: 5px; vertical-align: middle; }
-          #bc-dot.on { background: #6c6; }
-          #bc-row { display: flex; gap: 6px; margin-top: 6px; }
-          #bc-key { flex: 1; min-width: 0; background: #15121d; color: #e9f3f2;
-            border: 1px solid #3a3248; border-radius: 5px; padding: 5px 7px; font: inherit; }
-          #bc-go { background: linear-gradient(180deg,#26323e,#151e27); color: #e4f3f2;
-            border: 1px solid rgba(144,213,219,0.5); border-radius: 5px; padding: 5px 10px;
-            font: 600 12px system-ui; cursor: pointer; }
-          #bc-status { margin-top: 5px; color: #c9bea9; }
-        `;
-        document.head.appendChild(style);
-
-        const panel = document.createElement("div");
-        panel.id = "broadcast-panel";
-        panel.innerHTML =
-          `<span id="bc-dot"></span>Broadcast → room <b>${room}</b>` +
-          `<div id="bc-row"><input id="bc-key" type="password" placeholder="control key" autocomplete="off" />` +
-          `<button id="bc-go">Connect</button></div><div id="bc-status">enter the key and connect</div>`;
-        document.body.appendChild(panel);
-        const dot = panel.querySelector("#bc-dot");
-        const status = panel.querySelector("#bc-status");
-
-        let ws = null;
-        let timer = null;
-        const last = {};
-
-        const startLoop = () => {
-          if (timer) return;
-          if (m.perf_enable_broadcast) m.perf_enable_broadcast();
-          // The base loop runs at ~30 Hz for discrete gesture events, but params
-          // are coalesced to ~6.7 Hz and the swirl to ~22 Hz so neither channel
-          // exceeds its relay budget — bpm/detune change every frame during a
-          // carve drag, which would otherwise blow the 16/s {t:"set"} limit.
-          let lastParam = 0;
-          let lastSwirl = 0;
-          timer = setInterval(() => {
-            if (!ws || ws.readyState !== 1) return;
-            const now = performance.now();
-
-            if (m.perf_drain_events) {
-              try {
-                for (const e of JSON.parse(m.perf_drain_events())) ws.send(JSON.stringify(e));
-              } catch {}
-            }
-
-            if (now - lastSwirl >= 45 && m.perf_get_swirl) {
-              lastSwirl = now;
-              const sw = m.perf_get_swirl();
-              if (sw) ws.send(sw);
-            }
-
-            if (now - lastParam >= 150 && m.control_get_state) {
-              lastParam = now;
-              try {
-                const s = JSON.parse(m.control_get_state());
-                for (const k in s) {
-                  if (last[k] !== s[k]) {
-                    last[k] = s[k];
-                    ws.send(JSON.stringify({ t: "set", k, v: s[k] }));
-                  }
-                }
-              } catch {}
-            }
-          }, 33);
-        };
-
-        const connect = (key) => {
-          if (ws) { ws.close(); ws = null; }
-          status.textContent = "connecting…";
-          ws = new WebSocket(url);
-          ws.onopen = () => {
-            status.textContent = "authenticating…";
-            ws.send(JSON.stringify({ t: "auth", key }));
-          };
-          ws.onmessage = (ev) => {
-            let msg;
-            try { msg = JSON.parse(ev.data); } catch { return; }
-            if (msg.t === "auth") {
-              if (msg.ok) {
-                dot.classList.add("on");
-                status.textContent = "broadcasting — play to perform";
-                panel.querySelector("#bc-row").style.display = "none";
-                startLoop();
-              } else {
-                status.textContent = "wrong key";
-              }
-            } else if (msg.t === "error") {
-              status.textContent = "not authorized";
-            }
-          };
-          ws.onclose = () => { dot.classList.remove("on"); status.textContent = "disconnected — reconnect"; };
-          ws.onerror = () => { status.textContent = "connection error — check relay/key"; };
-        };
-
-        panel.querySelector("#bc-go").onclick = () => connect(panel.querySelector("#bc-key").value);
-        panel.querySelector("#bc-key").addEventListener("keydown", (e) => {
-          if (e.key === "Enter") connect(e.target.value);
-        });
       }
     </script>
   </body>

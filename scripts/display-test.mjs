@@ -1,11 +1,11 @@
-// End-to-end test for display mode.
+// End-to-end test for the instrument surface + separate control panel.
 //
-// Loads the real app in ?mode=display against an in-process relay, broadcasts
-// parameters from a performer socket, and verifies the *live engine state*
-// changed (via control_get_state). Requires a prior `npm run build`.
+// Loads the real app, opens /control, pairs the panel by code through the
+// instrument help screen, drives the real panel, and verifies the live engine
+// state changed (via control_get_state).
+// Requires a prior `npm run build`.
 // Run: `node scripts/display-test.mjs`.
 
-import { startRelay } from "./relay.mjs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join, extname, dirname } from "node:path";
@@ -25,8 +25,9 @@ function staticServer() {
   const s = createServer(async (req, res) => {
     try {
       const p = new URL(req.url, "http://x").pathname;
-      const body = await readFile(join(dist, p === "/" ? "/index.html" : p));
-      res.writeHead(200, { "content-type": MIME[extname(p)] ?? "application/octet-stream" });
+      const file = p === "/" ? "/index.html" : p === "/control" ? "/control.html" : p;
+      const body = await readFile(join(dist, file));
+      res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
       res.end(body);
     } catch {
       res.writeHead(404);
@@ -42,68 +43,83 @@ const check = (n, ok) => {
   if (!ok) failed = true;
 };
 
-const KEY = "test-secret";
-const relay = await startRelay({ port: 0, key: KEY });
 const stat = await staticServer();
 const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox", "--enable-unsafe-webgpu"] });
 
 try {
-  const page = await browser.newPage();
-  page.on("console", (m) => {
+  const surface = await browser.newPage();
+  surface.on("console", (m) => {
     const t = m.text();
-    if (t.includes("[display]") || t.toLowerCase().includes("panic")) console.log("[page]", t);
+    if (t.toLowerCase().includes("panic")) console.log("[surface]", t);
   });
-  page.on("pageerror", (e) => console.error("[pageerror]", e.message));
+  surface.on("pageerror", (e) => console.error("[surface pageerror]", e.message));
 
-  const url = `http://localhost:${stat.port}/index.html?mode=display&room=test&relay=ws://localhost:${relay.port}`;
-  await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(
+  const url = `http://localhost:${stat.port}/`;
+  await surface.goto(url, { waitUntil: "load" });
+  await surface.waitForFunction(
     "window.__geno && window.__geno.control_ready && window.__geno.control_ready() === true",
     { timeout: 30000 },
   );
-  check("display client ready (engine installed)", true);
+  check("surface ready (engine installed)", true);
 
-  // Performer control socket on the same room.
-  const control = new WebSocket(`ws://localhost:${relay.port}/room/test`);
-  await new Promise((res, rej) => {
-    control.addEventListener("open", res, { once: true });
-    control.addEventListener("error", () => rej(new Error("control ws error")), { once: true });
+  const control = await browser.newPage();
+  control.on("pageerror", (e) => console.error("[control pageerror]", e.message));
+  await control.goto(`http://localhost:${stat.port}/control.html`, { waitUntil: "load" });
+  const panelCode = await control.$eval("#panel-code", (el) => el.textContent.trim());
+  await surface.keyboard.press("KeyH");
+  await surface.waitForFunction(
+    `(() => {
+      const el = document.getElementById("start-overlay");
+      if (!el) return false;
+      const style = el.getAttribute("style") || "";
+      return !/display:\\s*none/.test(style) && !el.classList.contains("hidden");
+    })()`,
+    { timeout: 5000 },
+  );
+  await surface.$eval("#control-code", (el, code) => {
+    el.value = code;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, panelCode);
+  const connectBox = await surface.$eval("#control-connect", (el) => {
+    el.scrollIntoView({ block: "center", inline: "center" });
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });
-  const authed = new Promise((res, rej) => {
-    const to = setTimeout(() => rej(new Error("auth timeout")), 4000);
-    control.addEventListener("message", (ev) => {
-      const m = JSON.parse(ev.data);
-      if (m.t === "auth") {
-        clearTimeout(to);
-        res(m.ok);
-      }
-    });
-  });
-  control.send(JSON.stringify({ t: "auth", key: KEY }));
-  if (!(await authed)) throw new Error("control failed to authenticate");
-  for (const [k, v] of [["bpm", 123], ["root", 67], ["scale", "Lydian"], ["seed", 777]]) {
-    control.send(JSON.stringify({ t: "set", k, v }));
-  }
+  await surface.mouse.click(connectBox.x, connectBox.y);
+  await control.waitForFunction(
+    "document.getElementById('controls') && document.getElementById('controls').disabled === false",
+    { timeout: 10000 },
+  );
+  check("control panel linked by code", true);
 
-  // Poll the live engine state until it reflects the broadcast.
+  await control.$eval("#bpm", (el) => {
+    el.value = "123";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await control.select("#root", "67");
+  await control.select("#scale", "Lydian");
+  await control.$eval("#seed", (el) => {
+    el.value = "777";
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  // Poll the live engine state until it reflects the local control panel.
   let state = {};
   for (let i = 0; i < 50; i++) {
-    state = JSON.parse(await page.evaluate("window.__geno.control_get_state()"));
+    state = JSON.parse(await surface.evaluate("window.__geno.control_get_state()"));
     if (state.bpm === 123 && state.root === 67 && state.scale === "Lydian") break;
     await new Promise((r) => setTimeout(r, 100));
   }
-  check("bpm broadcast applied to live engine", state.bpm === 123);
-  check("root broadcast applied to live engine", state.root === 67);
-  check("scale broadcast applied to live engine", state.scale === "Lydian");
-  control.close();
+  check("bpm panel change applied to live engine", state.bpm === 123);
+  check("root panel change applied to live engine", state.root === 67);
+  check("scale panel change applied to live engine", state.scale === "Lydian");
 } catch (e) {
   console.error(e);
   failed = true;
 } finally {
   await browser.close();
   stat.close();
-  await relay.close();
 }
 
-console.log(failed ? "\nFAILED" : "\nall display checks passed");
+console.log(failed ? "\nFAILED" : "\nall surface/control checks passed");
 process.exit(failed ? 1 : 0);

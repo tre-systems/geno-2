@@ -7,7 +7,7 @@ mod targets;
 mod waves;
 
 use targets::RenderTargets;
-use waves::{create_waves_resources, VoicePacked, WavesResources, WavesUniforms};
+use waves::{create_waves_resources, TouchPacked, VoicePacked, WavesResources, WavesUniforms};
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -67,6 +67,9 @@ pub struct GpuState<'a> {
     ripple_uv: [f32; 2],
     ripple_t0: f32,
     ripple_amp: f32,
+    touch_points: [[f32; 4]; crate::input::MAX_TOUCH_POINTS],
+    touch_count: f32,
+    touch_energy: f32,
 }
 
 impl<'a> GpuState<'a> {
@@ -235,6 +238,9 @@ impl<'a> GpuState<'a> {
             ripple_uv: [0.5, 0.5],
             ripple_t0: -1.0,
             ripple_amp: 0.0,
+            touch_points: [[0.0; 4]; crate::input::MAX_TOUCH_POINTS],
+            touch_count: 0.0,
+            touch_energy: 0.0,
         })
     }
     pub fn set_ambient_clear(&mut self, energy01: f32) {
@@ -266,6 +272,17 @@ impl<'a> GpuState<'a> {
         self.ripple_amp = amp.clamp(0.0, 2.8);
         // Anchor ripple start to current accumulated time so shader can compute age
         self.ripple_t0 = self.time_accum;
+    }
+
+    pub fn set_touches(
+        &mut self,
+        points: [[f32; 4]; crate::input::MAX_TOUCH_POINTS],
+        count: usize,
+        energy: f32,
+    ) {
+        self.touch_points = points;
+        self.touch_count = count.min(crate::input::MAX_TOUCH_POINTS) as f32;
+        self.touch_energy = energy.clamp(0.0, 1.8);
     }
 
     pub fn resize_if_needed(&mut self, width: u32, height: u32) {
@@ -386,6 +403,12 @@ impl<'a> GpuState<'a> {
                 ripple_uv: self.ripple_uv,
                 ripple_t0: self.ripple_t0,
                 ripple_amp: self.ripple_amp,
+                touches: self.touch_points.map(|p| TouchPacked {
+                    uv_intensity_slot: p,
+                }),
+                touch_count: self.touch_count,
+                touch_energy: self.touch_energy,
+                _pad: [0.0, 0.0],
             };
             self.queue
                 .write_buffer(&self.waves.uniform_buffer, 0, bytemuck::bytes_of(&w));

@@ -30,6 +30,13 @@
         background: var(--panel); border: 1px solid var(--line);
         border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;
       }
+      .code-block {
+        display: grid; gap: 4px;
+      }
+      .code {
+        color: #f1cfab; font: 800 34px/1 "SF Mono", Menlo, Consolas, monospace;
+        letter-spacing: 0.14em; font-variant-numeric: tabular-nums;
+      }
       label { display: block; font-size: 12px; color: var(--soft); margin-bottom: 6px; }
       .row { display: flex; gap: 10px; align-items: center; }
       input[type="text"], input[type="number"], select {
@@ -54,21 +61,21 @@
   <body>
     <div class="wrap">
       <h1>Geno-2 Control</h1>
-      <p class="sub">Tweak the instrument on every connected display. Changes broadcast over the relay.</p>
+      <p class="sub">Settings stay off the instrument screen while you perform.</p>
 
       <div class="bar">
-        <div class="grid2">
-          <div><label>Relay</label><input id="relay" type="text" /></div>
-          <div><label>Room</label><input id="room" type="text" value="main" /></div>
+        <div class="row" style="justify-content: space-between;">
+          <div class="code-block">
+            <span class="muted">Panel code</span>
+            <span id="panel-code" class="code">000000</span>
+          </div>
+          <button id="open">Open Instrument</button>
         </div>
-        <div style="margin-top: 10px;">
-          <label>Control key</label>
-          <input id="key" type="password" placeholder="required to control" autocomplete="off" />
+        <div class="row" style="margin-top: 12px; justify-content: space-between;">
+          <span><span id="dot" class="dot"></span> <span id="status" class="muted">looking for surface</span></span>
+          <button id="start">Start</button>
         </div>
-        <div class="row" style="margin-top: 10px; justify-content: space-between;">
-          <span><span id="dot" class="dot"></span> <span id="status" class="muted">disconnected</span></span>
-          <button id="connect">Connect</button>
-        </div>
+        <p class="muted" style="margin: 10px 0 0;">On the instrument, press <strong>H</strong> and enter this code in the bottom-right control panel area.</p>
       </div>
 
       <fieldset id="controls" class="ctl" disabled>
@@ -118,52 +125,77 @@
     <script>
       (function () {
         const $ = (id) => document.getElementById(id);
-        $("relay").value = location.protocol.startsWith("http")
-          ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
-          : "ws://localhost:8787";
+        const channelName = "geno-2-control";
+        const channel = "BroadcastChannel" in window ? new BroadcastChannel(channelName) : null;
+        const tabId = Math.random().toString(36).slice(2);
+        const codeStorageKey = `${channelName}-panel-code`;
+        const normalizeCode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+        function generateCode() {
+          return String(Math.floor(100000 + Math.random() * 900000));
+        }
+        let pairingCode = generateCode();
+        try {
+          const stored = normalizeCode(sessionStorage.getItem(codeStorageKey));
+          if (stored.length === 6) pairingCode = stored;
+          else sessionStorage.setItem(codeStorageKey, pairingCode);
+        } catch {}
+        $("panel-code").textContent = pairingCode;
+        let linked = false;
 
-        let ws = null;
-        function setStatus(connected, text) {
-          $("dot").classList.toggle("on", connected);
+        function setStatus(isLinked, text) {
+          linked = isLinked;
+          $("dot").classList.toggle("on", isLinked);
           $("status").textContent = text;
-          $("controls").disabled = !connected;
+          $("controls").disabled = !isLinked;
+        }
+        function post(msg) {
+          const out = { ...msg, source: "control", code: pairingCode, tabId, nonce: Date.now() };
+          if (channel) channel.postMessage(out);
+          try {
+            localStorage.setItem(`${channelName}-command`, JSON.stringify(out));
+          } catch {}
         }
         function send(k, v) {
-          if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "set", k, v }));
+          post({ t: "set", k, v });
         }
-        function pushAll() {
-          send("bpm", +$("bpm").value);
-          send("detune", +$("detune").value);
-          send("root", +$("root").value);
-          send("scale", $("scale").value);
-          send("seed", +$("seed").value);
-          send("volume", +$("volume").value);
-          send("paused", $("paused").checked);
+        function applyState(state) {
+          if (!state) return;
+          if (Number.isFinite(+state.bpm)) {
+            $("bpm").value = Math.round(+state.bpm);
+            $("bpmv").textContent = $("bpm").value;
+          }
+          if (Number.isFinite(+state.detune)) {
+            $("detune").value = Math.round(+state.detune);
+            $("detv").textContent = $("detune").value;
+          }
+          if (Number.isFinite(+state.root)) $("root").value = String(+state.root);
+          if (state.scale) $("scale").value = String(state.scale);
+          if (typeof state.paused === "boolean") $("paused").checked = state.paused;
+          if (Number.isFinite(+state.volume)) {
+            $("volume").value = (+state.volume).toFixed(2);
+            $("volv").textContent = $("volume").value;
+          }
+          setStatus(true, "linked to instrument");
         }
-        function connect() {
-          if (ws) { ws.close(); ws = null; }
-          const url = `${$("relay").value.replace(/\/$/, "")}/room/${encodeURIComponent($("room").value || "main")}`;
-          setStatus(false, "connecting…");
-          ws = new WebSocket(url);
-          ws.onopen = () => {
-            ws.send(JSON.stringify({ t: "auth", key: $("key").value }));
-            $("status").textContent = "authenticating…";
-          };
-          ws.onmessage = (ev) => {
-            let m;
-            try { m = JSON.parse(ev.data); } catch { return; }
-            if (m.t === "auth") {
-              if (m.ok) { setStatus(true, "connected — controlling"); pushAll(); }
-              else setStatus(false, "wrong control key");
-            } else if (m.t === "error" && m.e === "unauthorized") {
-              setStatus(false, "not authorized to control");
-            }
-          };
-          ws.onclose = () => setStatus(false, "disconnected");
-          ws.onerror = () => setStatus(false, "error — check relay URL");
+        function handle(msg) {
+          if (!msg || msg.source !== "surface") return;
+          if (normalizeCode(msg.code) !== pairingCode) return;
+          if (msg.t === "pair") {
+            setStatus(true, "linked to instrument");
+            post({ t: "request_state" });
+            return;
+          }
+          if (msg.t === "state") applyState(msg.state);
         }
 
-        $("connect").onclick = connect;
+        if (channel) channel.onmessage = (ev) => handle(ev.data);
+        window.addEventListener("storage", (ev) => {
+          if (ev.key !== `${channelName}-state` || !ev.newValue) return;
+          try { handle(JSON.parse(ev.newValue)); } catch {}
+        });
+
+        $("open").onclick = () => window.open("./", "geno-2-instrument");
+        $("start").onclick = () => post({ t: "start" });
         $("bpm").oninput = (e) => { $("bpmv").textContent = e.target.value; send("bpm", +e.target.value); };
         $("detune").oninput = (e) => { $("detv").textContent = e.target.value; send("detune", +e.target.value); };
         $("root").onchange = (e) => send("root", +e.target.value);
@@ -172,6 +204,11 @@
         $("newseq").onclick = () => { const s = Math.floor(Math.random() * 1e9); $("seed").value = s; send("seed", s); };
         $("volume").oninput = (e) => { $("volv").textContent = e.target.value; send("volume", +e.target.value); };
         $("paused").onchange = (e) => send("paused", e.target.checked);
+        post({ t: "request_state" });
+        setStatus(false, "enter code on instrument");
+        setInterval(() => {
+          if (!linked) post({ t: "request_state" });
+        }, 800);
       })();
     </script>
   </body>

@@ -244,8 +244,8 @@ async fn init() -> anyhow::Result<()> {
                 queued_ripple_uv: queued_ripple_uv.clone(),
             });
 
-            // Networked-performance bridge: lets ?mode=broadcast stream this
-            // app's gestures, and ?mode=display reproduce a performer's.
+            // Optional perf bridge kept for the relay tooling; the normal
+            // performance flow uses local touch input plus /control.
             crate::perf::install(
                 canvas_for_click.clone(),
                 engine.clone(),
@@ -264,6 +264,7 @@ async fn init() -> anyhow::Result<()> {
                 pulses: pulses.clone(),
                 canvas: canvas_for_click.clone(),
                 mouse: mouse_state.clone(),
+                multi_touch: multi_touch.clone(),
                 audio_ctx: audio_ctx.clone(),
                 listener: listener_for_tick.clone(),
                 voice_gains: voice_gains.clone(),

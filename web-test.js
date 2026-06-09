@@ -56,12 +56,44 @@ async function gotoWithRetry(
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });
 
+  await page.waitForSelector("#display-start", { timeout: 10000 });
+
+  const overlayInitiallyHidden = await page.evaluate(() => {
+    const el = document.getElementById("start-overlay");
+    if (!el) return "missing";
+    const style = el.getAttribute("style") || "";
+    const byStyle = /display:\s*none/.test(style);
+    const byClass = el.classList.contains("hidden");
+    return byStyle || byClass ? "hidden" : "visible";
+  });
+
+  if (overlayInitiallyHidden !== "hidden")
+    throw new Error("instrument did not start with the help overlay hidden");
+
   await page.mouse.click(box.x, box.y);
   await new Promise((r) => setTimeout(r, 400));
 
-  // Overlay should be present initially; close it, then bring it back with 'H'
+  const displayStartRemoved = await page.$("#display-start");
+  if (displayStartRemoved) throw new Error("tap-to-start overlay did not hide");
+
+  // Help overlay should still be available with 'H'
   const overlayInitially = await page.$("#start-overlay");
   if (!overlayInitially) throw new Error("start overlay not found");
+
+  await page.keyboard.press("KeyH");
+  await new Promise((r) => setTimeout(r, 200));
+
+  const overlayShownAfterH = await page.evaluate(() => {
+    const el = document.getElementById("start-overlay");
+    if (!el) return "missing";
+    const style = el.getAttribute("style") || "";
+    const byStyle = /display:\s*none/.test(style);
+    const byClass = el.classList.contains("hidden");
+    return byStyle || byClass ? "hidden" : "visible";
+  });
+
+  if (overlayShownAfterH !== "visible")
+    throw new Error("start overlay did not show after H");
 
   // Click close to hide
   await page.click("#overlay-close");

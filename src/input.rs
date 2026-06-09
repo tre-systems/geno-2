@@ -7,6 +7,8 @@ use web_sys as web;
 
 use std::collections::HashMap;
 
+pub const MAX_TOUCH_POINTS: usize = 5;
+
 #[derive(Default, Clone, Copy)]
 pub struct MouseState {
     pub x: f32,
@@ -42,14 +44,8 @@ pub struct RippleEvent {
 pub enum TouchGestureKind {
     #[default]
     None,
-    /// Two fingers: pinch → BPM, rotate → detune.
-    TwoFingerPinchRotate,
-    /// Three fingers: swipe left/right → root note, up/down → mode.
-    ThreeFingerSwipe,
-    /// Four fingers down: randomize root + mode + reseed all voices.
-    FourFingerTap,
-    /// Five fingers down: toggle pause/resume.
-    FiveFingerTap,
+    /// Two or more fingers: continuous performance surface.
+    PerformanceSurface,
 }
 
 /// Tracks all active pointer positions for multitouch gesture detection.
@@ -61,23 +57,23 @@ pub struct MultiTouchState {
     pub gesture_kind: TouchGestureKind,
     /// Peak simultaneous pointer count during this gesture.
     pub peak_pointer_count: usize,
-    // ── Two-finger pinch/rotate state ──
-    /// Distance between the two fingers when the gesture started (px).
+    // ── Performance-surface baseline state ──
+    /// Distance between the baseline finger pair when the gesture started (px).
     pub initial_distance: f32,
     /// Angle of the line between the two fingers when the gesture started (rad).
     pub initial_angle: f32,
-    /// BPM snapshot when the two-finger gesture started.
+    /// BPM snapshot when the performance gesture started.
     pub initial_bpm: f32,
-    /// Detune snapshot when the two-finger gesture started (cents).
+    /// Detune snapshot when the performance gesture started (cents).
     pub initial_detune: f32,
-    // ── Three-finger swipe state ──
-    /// Centroid of all pointers when the three-finger gesture began (px).
+    /// Centroid of all pointers when the performance gesture began (px).
     pub initial_centroid: [f32; 2],
     /// Running centroid of all pointers, updated on every pointermove.
     pub current_centroid: Option<[f32; 2]>,
-    // ── Four/five-finger state ──
-    /// Whether the 4- or 5-finger action has already been committed this gesture.
-    pub gesture_committed: bool,
+    /// Accumulated centroid travel during the current multi-finger gesture.
+    pub motion_px: f32,
+    /// Last accumulated motion value that emitted a surface ripple.
+    pub last_ripple_motion: f32,
 }
 
 impl MultiTouchState {
@@ -131,6 +127,43 @@ impl MultiTouchState {
             .map(|[cx, cy]| [(cx / w_px).clamp(0.0, 1.0), (cy / h_px).clamp(0.0, 1.0)])
     }
 
+    /// Mean distance from active pointers to their centroid, in canvas pixels.
+    pub fn spread_px(&self) -> Option<f32> {
+        let centroid = self.centroid_px()?;
+        let n = self.pointers.len();
+        if n < 2 {
+            return None;
+        }
+        let sum = self
+            .pointers
+            .values()
+            .map(|p| {
+                let dx = p[0] - centroid[0];
+                let dy = p[1] - centroid[1];
+                (dx * dx + dy * dy).sqrt()
+            })
+            .sum::<f32>();
+        Some((sum / n as f32).max(1.0))
+    }
+
+    /// Sorted active touches as shader-ready `[u, v, intensity, slot]` rows.
+    pub fn touch_points_uv(&self, w_px: f32, h_px: f32) -> ([[f32; 4]; MAX_TOUCH_POINTS], usize) {
+        let mut out = [[0.0_f32; 4]; MAX_TOUCH_POINTS];
+        let mut ids: Vec<i32> = self.pointers.keys().copied().collect();
+        ids.sort_unstable();
+        let count = ids.len().min(MAX_TOUCH_POINTS);
+        for (slot, id) in ids.into_iter().take(MAX_TOUCH_POINTS).enumerate() {
+            let p = self.pointers[&id];
+            out[slot] = [
+                (p[0] / w_px).clamp(0.0, 1.0),
+                (p[1] / h_px).clamp(0.0, 1.0),
+                1.0,
+                slot as f32,
+            ];
+        }
+        (out, count)
+    }
+
     /// Resets all gesture state, keeping the pointer map intact.
     pub fn reset_gesture(&mut self) {
         self.gesture_kind = TouchGestureKind::None;
@@ -141,7 +174,8 @@ impl MultiTouchState {
         self.initial_detune = 0.0;
         self.initial_centroid = [0.0, 0.0];
         self.current_centroid = None;
-        self.gesture_committed = false;
+        self.motion_px = 0.0;
+        self.last_ripple_motion = 0.0;
     }
 }
 #[inline]

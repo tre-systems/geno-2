@@ -18,6 +18,7 @@ pub struct FrameContext<'a> {
 
     pub canvas: web::HtmlCanvasElement,
     pub mouse: Rc<RefCell<input::MouseState>>,
+    pub multi_touch: Rc<RefCell<input::MultiTouchState>>,
 
     pub audio_ctx: web::AudioContext,
     pub listener: web::AudioListener,
@@ -280,6 +281,16 @@ impl<'a> FrameContext<'a> {
             g.set_swirl(self.swirl_pos, self.visual_swirl_strength, true);
             let w = self.canvas.width();
             let h = self.canvas.height();
+            let (touch_points, touch_count) = self
+                .multi_touch
+                .borrow()
+                .touch_points_uv(w.max(1) as f32, h.max(1) as f32);
+            let touch_energy = if touch_count == 0 {
+                0.0
+            } else {
+                (0.30 + 0.18 * touch_count as f32 + 0.42 * gesture_energy).clamp(0.0, 1.8)
+            };
+            g.set_touches(touch_points, touch_count, touch_energy);
             g.resize_if_needed(w, h);
             let pulse_energy_snapshot: Vec<f32> = {
                 let pulses_ref = self.pulses.borrow();

@@ -9,14 +9,14 @@ Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of tr
 | System overview                  | `system-overview.dot`   | `system-overview.png`   |
 | Frame loop (update → render)     | `frame-loop.dot`        | `frame-loop.png`        |
 | Audio graph (WebAudio topology)  | `audio-graph.dot`       | `audio-graph.png`       |
-| Networked control (relay → displays) | `networked-control.dot` | `networked-control.png` |
+| Legacy networked relay reference     | `networked-control.dot` | `networked-control.png` |
 
 ## Reading order
 
 1. **System overview** for the whole shape: Cloudflare Worker → the browser page → the Rust/WASM app core → the two outputs (the WebAudio graph to the speakers, the WebGPU passes to the canvas).
 2. **Frame loop** for what one `requestAnimationFrame` does: schedule each grid step ahead on the `AudioContext` clock, couple the notes that have now sounded into audio + visual state, then render.
 3. **Audio graph** for the WebAudio node topology: per-note synthesis → per-voice panner + sends → reverb/delay buses → master tone/saturation/compression → destination.
-4. **Networked control** for the optional remote-performance path: a performer panel (`/control`) broadcasting parameter changes through a Cloudflare Durable Object relay to `?mode=display` clients that each render locally — only control crosses the network, never audio or video.
+4. **Legacy networked relay** for the retained relay tooling. The current performance path is `/` plus `/control`, without a server relay.
 
 ## Conventions
 
@@ -29,8 +29,8 @@ Color coding by domain:
 - Purple — the WebGPU rendering boundary (waves pass, bloom, composite).
 - Bold green outline — terminal outputs (`<canvas>`, speakers).
 - Diamonds — decisions (white fill, dark border).
-- Cylinders — persistent storage (the relay's Durable Object state).
-- Dashed grey — secondary or repeated elements (e.g. "…more display clients").
+- Cylinders — persistent storage in legacy relay diagrams.
+- Dashed grey — secondary or repeated elements.
 
 Fonts: Avenir. Rendered at 220 DPI.
 

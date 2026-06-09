@@ -17,19 +17,14 @@ const RIPPLE_INTERVAL_PX: f32 = 88.0;
 const RESEED_INTERVAL_SEC: f64 = 0.22;
 const ROOT_TABLE: [i32; 15] = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
 
-/// Minimum BPM for pinch gesture.
-const PINCH_BPM_MIN: f32 = 38.0;
-/// Maximum BPM for pinch gesture.
-const PINCH_BPM_MAX: f32 = 220.0;
-/// Sensitivity for rotation→detune mapping (cents per radian).
-const ROTATE_DETUNE_SENSITIVITY: f32 = 180.0;
-/// Minimum centroid displacement (px) for a 3-finger swipe to register.
-const THREE_FINGER_SWIPE_THRESHOLD_PX: f32 = 40.0;
+const TOUCH_BPM_MIN: f32 = 46.0;
+const TOUCH_BPM_MAX: f32 = 190.0;
+const TOUCH_BPM_SPREAD_DEPTH: f32 = 0.42;
+const TOUCH_ROTATE_DETUNE_SENSITIVITY: f32 = 76.0;
+const TOUCH_PARAM_BLEND: f32 = 0.13;
+const TOUCH_RIPPLE_INTERVAL_PX: f32 = 118.0;
 
-/// Root notes in circle-of-fifths order for 3-finger swipe cycling.
-const ROOTS_MUSICAL_ORDER: [i32; 7] = [60, 67, 62, 69, 64, 71, 65]; // C G D A E B F
-
-/// Mode scales in order for 3-finger swipe cycling.
+/// Mode scales used when a single-finger carve drop chooses a new mode.
 const MODES_ORDER: [&[f32]; 7] = [
     IONIAN, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, AEOLIAN, LOCRIAN,
 ];
@@ -77,8 +72,8 @@ impl InputWiring {
 
     /// Queue a surface ripple at the given UV with the given amplitude,
     /// replacing any ripple not yet consumed by the render loop. Also records the
-    /// ripple for networked broadcast (a no-op unless broadcasting), so every
-    /// ripple source — tap, drag, flare, carve — is captured from one place.
+    /// ripple for the optional perf bridge (a no-op unless armed), so every
+    /// ripple source is captured from one place.
     fn queue_ripple(&self, uv: [f32; 2], amp: f32) {
         *self.queued_ripple_uv.borrow_mut() = Some(input::RippleEvent { uv, amp });
         perf::record_ripple(uv, amp);
@@ -109,39 +104,31 @@ fn wire_pointermove(w: &InputWiring) {
             return;
         }
 
-        // Always update pointer map and running centroid for tracked pointers
+        // Always update pointer map and running centroid for tracked pointers.
+        // During multi-finger play, centroid travel becomes the rate-limited
+        // source for visible surface ripples.
         {
             let mut mt = w.multi_touch.borrow_mut();
             if mt.pointers.contains_key(&pid) {
+                let prev_centroid = mt.current_centroid.or_else(|| mt.centroid_px());
                 mt.pointers.insert(pid, [pos.x, pos.y]);
-                mt.current_centroid = mt.centroid_px();
+                let next_centroid = mt.centroid_px();
+                if mt.gesture_kind == TouchGestureKind::PerformanceSurface {
+                    if let (Some(prev), Some(next)) = (prev_centroid, next_centroid) {
+                        let dx = next[0] - prev[0];
+                        let dy = next[1] - prev[1];
+                        mt.motion_px += (dx * dx + dy * dy).sqrt();
+                    }
+                }
+                mt.current_centroid = next_centroid;
             }
         }
 
         let gesture_kind = w.multi_touch.borrow().gesture_kind;
 
         match gesture_kind {
-            TouchGestureKind::TwoFingerPinchRotate => {
-                handle_two_finger_move(&w, w_px, h_px);
-                ev.prevent_default();
-                return;
-            }
-            TouchGestureKind::ThreeFingerSwipe => {
-                // Swirl tracks centroid during 3-finger gesture
-                if let Some(c_uv) = w.multi_touch.borrow().centroid_uv(w_px, h_px) {
-                    let mut ms = w.mouse_state.borrow_mut();
-                    ms.x = c_uv[0] * w_px;
-                    ms.y = c_uv[1] * h_px;
-                    ms.gesture_energy = (ms.gesture_energy * 0.82 + 0.18 * 0.55).clamp(0.0, 1.8);
-                }
-                ev.prevent_default();
-                return;
-            }
-            TouchGestureKind::FourFingerTap | TouchGestureKind::FiveFingerTap => {
-                // Visual feedback only; action already committed on pointerdown
-                if let Some(c_uv) = w.multi_touch.borrow().centroid_uv(w_px, h_px) {
-                    w.set_mouse_uv(c_uv, w_px, h_px);
-                }
+            TouchGestureKind::PerformanceSurface => {
+                handle_performance_touch_move(&w, w_px, h_px);
                 ev.prevent_default();
                 return;
             }
@@ -310,12 +297,17 @@ fn wire_pointermove(w: &InputWiring) {
     closure.forget();
 }
 
-/// Handle two-finger pinch→BPM and rotate→detune during pointermove.
-fn handle_two_finger_move(w: &InputWiring, w_px: f32, h_px: f32) {
-    let (ratio, angle_delta) = {
+/// Handle two-or-more-finger performance movement during pointermove.
+fn handle_performance_touch_move(w: &InputWiring, w_px: f32, h_px: f32) {
+    let (count, centroid_uv, spread_ratio, angle_delta, initial_bpm, initial_detune) = {
         let mt = w.multi_touch.borrow();
-        if let Some((dist, angle)) = mt.two_finger_metrics() {
-            let ratio = dist / mt.initial_distance.max(1.0);
+        if mt.pointers.len() < 2 {
+            return;
+        }
+        let centroid_uv = mt.centroid_uv(w_px, h_px).unwrap_or([0.5, 0.5]);
+        let spread = mt.spread_px().unwrap_or(mt.initial_distance.max(1.0));
+        let ratio = (spread / mt.initial_distance.max(1.0)).clamp(0.58, 1.78);
+        let angle_delta = if let Some((_dist, angle)) = mt.two_finger_metrics() {
             let mut da = angle - mt.initial_angle;
             while da > std::f32::consts::PI {
                 da -= std::f32::consts::TAU;
@@ -323,47 +315,100 @@ fn handle_two_finger_move(w: &InputWiring, w_px: f32, h_px: f32) {
             while da < -std::f32::consts::PI {
                 da += std::f32::consts::TAU;
             }
-            (ratio, da)
+            da
         } else {
-            return;
-        }
+            0.0
+        };
+        (
+            mt.pointers.len(),
+            centroid_uv,
+            ratio,
+            angle_delta,
+            mt.initial_bpm,
+            mt.initial_detune,
+        )
     };
 
-    let (initial_bpm, initial_detune) = {
-        let mt = w.multi_touch.borrow();
-        (mt.initial_bpm, mt.initial_detune)
-    };
-
-    let new_bpm = (initial_bpm * ratio).clamp(PINCH_BPM_MIN, PINCH_BPM_MAX);
-    let new_detune =
-        (initial_detune + angle_delta * ROTATE_DETUNE_SENSITIVITY).clamp(-200.0, 200.0);
+    let count_n = ((count.saturating_sub(1)) as f32 / 4.0).clamp(0.0, 1.0);
+    let spread_motion = (spread_ratio - 1.0).abs().clamp(0.0, 0.8);
+    let rotate_n = (angle_delta.abs() / std::f32::consts::PI).clamp(0.0, 1.0);
+    let bpm_target = (initial_bpm * (1.0 + (spread_ratio - 1.0) * TOUCH_BPM_SPREAD_DEPTH))
+        .clamp(TOUCH_BPM_MIN, TOUCH_BPM_MAX);
+    let detune_target =
+        (initial_detune + angle_delta * TOUCH_ROTATE_DETUNE_SENSITIVITY).clamp(-160.0, 160.0);
 
     {
         let mut eng = w.engine.borrow_mut();
-        eng.set_bpm(Bpm::new(new_bpm));
-        eng.set_detune_cents(Cents::new(new_detune));
+        let bpm = lerp(eng.params.bpm.get(), bpm_target, TOUCH_PARAM_BLEND);
+        let detune = lerp(
+            eng.params.detune_cents.get(),
+            detune_target,
+            TOUCH_PARAM_BLEND,
+        );
+        eng.set_bpm(Bpm::new(bpm));
+        eng.set_detune_cents(Cents::new(detune));
+
+        let voice_len = eng.voices.len().max(1);
+        let center_x = (centroid_uv[0] - 0.5) * 1.55;
+        let center_z = (0.5 - centroid_uv[1]) * 1.55;
+        let base_radius = (0.30 + 0.22 * count_n + 0.30 * spread_motion).clamp(0.25, 0.86);
+        let base_phase = angle_delta * 0.85 + centroid_uv[0] * std::f32::consts::TAU;
+        for i in 0..eng.voices.len() {
+            let lane = i as f32 / voice_len as f32;
+            let phase = base_phase
+                + i as f32 * (std::f32::consts::TAU / voice_len as f32)
+                + count_n * (0.45 + lane * 0.36);
+            let target = Vec3::new(
+                (center_x * 0.48 + phase.cos() * base_radius * (0.72 + 0.20 * lane))
+                    .clamp(-1.2, 1.2),
+                0.0,
+                (center_z * 0.48 + phase.sin() * base_radius * (0.92 - 0.18 * lane))
+                    .clamp(-1.2, 1.2),
+            );
+            let current = eng.voices[i].position;
+            eng.set_voice_position(i, current.lerp(target, 0.16));
+
+            let base_prob = match i {
+                0 => 0.42,
+                1 => 0.55,
+                _ => 0.38,
+            };
+            let prob_target = (base_prob
+                + 0.08 * count_n
+                + 0.07 * spread_motion
+                + 0.04 * (0.5 + 0.5 * (phase * 1.7).sin()))
+            .clamp(0.10, 0.82);
+            eng.configs[i].trigger_probability =
+                lerp(eng.configs[i].trigger_probability, prob_target, 0.10);
+        }
     }
 
     {
         let mut ms = w.mouse_state.borrow_mut();
-        let pinch_intensity = (ratio - 1.0).abs().clamp(0.0, 1.0);
-        let rotate_intensity = angle_delta.abs().clamp(0.0, 1.0);
+        ms.x = centroid_uv[0] * w_px;
+        ms.y = centroid_uv[1] * h_px;
+        ms.down = true;
         let energy_target =
-            (0.40 + 0.55 * pinch_intensity + 0.45 * rotate_intensity).clamp(0.0, 1.8);
-        ms.gesture_energy = (ms.gesture_energy * 0.78 + energy_target * 0.22).clamp(0.0, 1.8);
-        ms.gesture_flash = (ms.gesture_flash + 0.04 + 0.08 * rotate_intensity).clamp(0.0, 1.6);
-        ms.gesture_spin = (ms.gesture_spin + angle_delta * 0.02).clamp(-4.0, 4.0);
+            (0.34 + 0.36 * count_n + 0.34 * spread_motion + 0.22 * rotate_n).clamp(0.0, 1.8);
+        ms.gesture_energy = (ms.gesture_energy * 0.82 + energy_target * 0.18).clamp(0.0, 1.8);
+        ms.gesture_flash =
+            (ms.gesture_flash + 0.025 + 0.032 * count_n + 0.045 * rotate_n).clamp(0.0, 1.4);
+        ms.gesture_spin = lerp(ms.gesture_spin, angle_delta * 0.32, 0.08).clamp(-4.0, 4.0);
     }
 
-    if let Some(mid_uv) = w.multi_touch.borrow().midpoint_uv(w_px, h_px) {
-        w.set_mouse_uv(mid_uv, w_px, h_px);
-    }
-
-    if let Some(window) = web::window() {
-        if let Some(document) = window.document() {
-            overlay::update_hint(&document, new_detune, new_bpm, "");
-            overlay::show_hint(&document);
+    let ripple = {
+        let mut mt = w.multi_touch.borrow_mut();
+        if mt.motion_px - mt.last_ripple_motion >= TOUCH_RIPPLE_INTERVAL_PX {
+            mt.last_ripple_motion = mt.motion_px;
+            Some(centroid_uv)
+        } else {
+            None
         }
+    };
+    if let Some(uv) = ripple {
+        let amp =
+            (0.72 + 0.30 * count_n + 0.26 * spread_motion + 0.20 * rotate_n).clamp(0.55, 1.55);
+        w.queue_ripple(uv, amp);
     }
 }
 
@@ -382,6 +427,7 @@ fn wire_pointerdown(w: &InputWiring) {
         let pointer_count = {
             let mut mt = w.multi_touch.borrow_mut();
             mt.pointers.insert(pid, [pos.x, pos.y]);
+            mt.current_centroid = mt.centroid_px();
             let count = mt.pointers.len();
             mt.peak_pointer_count = mt.peak_pointer_count.max(count);
             count
@@ -395,7 +441,7 @@ fn wire_pointerdown(w: &InputWiring) {
                 ds.pending = false;
             }
 
-            start_or_upgrade_multitouch(&w, pointer_count);
+            start_or_update_performance_touch(&w, pointer_count);
         } else {
             // ── Single pointer: existing behavior ──
             {
@@ -435,98 +481,48 @@ fn wire_pointerdown(w: &InputWiring) {
     closure.forget();
 }
 
-/// Start a new multitouch gesture or upgrade an existing one when more fingers arrive.
-fn start_or_upgrade_multitouch(w: &InputWiring, pointer_count: usize) {
+/// Start or continue the continuous multi-finger performance surface.
+fn start_or_update_performance_touch(w: &InputWiring, pointer_count: usize) {
     let w_px = w.canvas.width().max(1) as f32;
     let h_px = w.canvas.height().max(1) as f32;
 
-    let mut mt = w.multi_touch.borrow_mut();
-
-    match pointer_count {
-        2 if mt.gesture_kind == TouchGestureKind::None => {
-            // Start two-finger pinch/rotate
+    let started = {
+        let mut mt = w.multi_touch.borrow_mut();
+        if mt.gesture_kind == TouchGestureKind::None {
+            let eng = w.engine.borrow();
+            mt.gesture_kind = TouchGestureKind::PerformanceSurface;
             if let Some((dist, angle)) = mt.two_finger_metrics() {
-                let eng = w.engine.borrow();
-                mt.gesture_kind = TouchGestureKind::TwoFingerPinchRotate;
                 mt.initial_distance = dist;
                 mt.initial_angle = angle;
-                mt.initial_bpm = eng.params.bpm.get();
-                mt.initial_detune = eng.params.detune_cents.get();
-                log::info!(
-                    "[gesture] multitouch-2 begin dist={:.0}px angle={:.2}rad",
-                    dist,
-                    angle
-                );
+            } else {
+                mt.initial_distance = mt.spread_px().unwrap_or(1.0);
+                mt.initial_angle = 0.0;
             }
-        }
-        3 => {
-            // Upgrade to three-finger swipe
-            mt.gesture_kind = TouchGestureKind::ThreeFingerSwipe;
-            if let Some(centroid) = mt.centroid_px() {
-                mt.initial_centroid = centroid;
-            }
-            log::info!("[gesture] multitouch-3 begin (swipe)");
-        }
-        4 if !mt.gesture_committed => {
-            // Four-finger tap: randomize root + mode + reseed
-            mt.gesture_kind = TouchGestureKind::FourFingerTap;
-            mt.gesture_committed = true;
-
-            let ri = (js_sys::Math::random() * ROOTS_MUSICAL_ORDER.len() as f64).floor() as usize;
-            let mi = (js_sys::Math::random() * MODES_ORDER.len() as f64).floor() as usize;
-
-            {
-                let mut eng = w.engine.borrow_mut();
-                eng.params.root_midi = ROOTS_MUSICAL_ORDER[ri];
-                eng.params.scale = MODES_ORDER[mi];
-                let voice_len = eng.voices.len();
-                for i in 0..voice_len {
-                    eng.reseed_voice(i, None);
-                }
-            }
+            mt.initial_bpm = eng.params.bpm.get();
+            mt.initial_detune = eng.params.detune_cents.get();
+            mt.initial_centroid = mt.centroid_px().unwrap_or([w_px * 0.5, h_px * 0.5]);
+            mt.current_centroid = Some(mt.initial_centroid);
+            mt.motion_px = 0.0;
+            mt.last_ripple_motion = 0.0;
             log::info!(
-                "[gesture] multitouch-4 randomize root={} mode={}",
-                ROOTS_MUSICAL_ORDER[ri],
-                MODE_NAMES[mi]
+                "[gesture] multitouch surface begin fingers={} spread={:.0}px",
+                pointer_count,
+                mt.initial_distance
             );
-
-            // Update hint
-            drop(mt);
-            update_hint_from_engine(w);
-            let mt = w.multi_touch.borrow();
-
-            // Strong visual burst
-            w.bump_gesture(1.2, 1.0);
-            if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-                w.queue_ripple(c_uv, 2.2);
-            }
-            return;
+            true
+        } else {
+            false
         }
-        n if n >= 5 && !mt.gesture_committed => {
-            // Five-finger tap: toggle pause/resume
-            mt.gesture_kind = TouchGestureKind::FiveFingerTap;
-            mt.gesture_committed = true;
+    };
 
-            {
-                let mut p = w.paused.borrow_mut();
-                *p = !*p;
-                log::info!("[gesture] multitouch-5 paused={}", *p);
-            }
-
-            // Visual burst
-            w.bump_gesture(0.85, 0.75);
-            if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-                w.queue_ripple(c_uv, 1.8);
-            }
-            return;
+    if let Some(c_uv) = w.multi_touch.borrow().centroid_uv(w_px, h_px) {
+        w.set_mouse_uv(c_uv, w_px, h_px);
+        w.mouse_state.borrow_mut().down = true;
+        let count_n = ((pointer_count.saturating_sub(1)) as f32 / 4.0).clamp(0.0, 1.0);
+        w.bump_gesture(0.42 + 0.28 * count_n, 0.22 + 0.16 * count_n);
+        if started {
+            w.queue_ripple(c_uv, 1.12 + 0.22 * count_n);
         }
-        _ => {}
-    }
-
-    // Visual feedback for any multitouch start
-    w.bump_gesture(0.55, 0.30);
-    if let Some(c_uv) = mt.centroid_uv(w_px, h_px) {
-        w.queue_ripple(c_uv, 1.45);
     }
 }
 
@@ -543,52 +539,54 @@ fn wire_pointerup(w: &InputWiring) {
         let gesture_kind = w.multi_touch.borrow().gesture_kind;
         let was_multitouch = gesture_kind != TouchGestureKind::None;
 
-        // Remove pointer and check if gesture should end
-        {
+        // Remove pointer and check if a multi-finger surface should end.
+        let multitouch_release_uv = {
             let mut mt = w.multi_touch.borrow_mut();
             mt.pointers.remove(&pid);
+            mt.current_centroid = mt.centroid_px();
 
             if was_multitouch && mt.pointers.is_empty() {
-                // All fingers lifted — commit deferred gestures and reset
-                let kind = mt.gesture_kind;
-                let initial_centroid = mt.initial_centroid;
-
-                // Snapshot centroid before reset (prefer stored centroid over last pointer position)
+                // Snapshot centroid before reset (prefer stored centroid over last pointer position).
                 let final_pos = mt.current_centroid.unwrap_or([pos.x, pos.y]);
-
                 mt.reset_gesture();
-                drop(mt);
-
-                if kind == TouchGestureKind::ThreeFingerSwipe {
-                    handle_three_finger_release(w.clone(), initial_centroid, final_pos);
-                } else if kind == TouchGestureKind::TwoFingerPinchRotate {
-                    // Reseed voices on pinch/rotate release
-                    let mut eng = w.engine.borrow_mut();
-                    let voice_len = eng.voices.len();
-                    for i in 0..voice_len {
-                        eng.reseed_voice(i, None);
+                Some([
+                    (final_pos[0] / w.canvas.width().max(1) as f32).clamp(0.0, 1.0),
+                    (final_pos[1] / w.canvas.height().max(1) as f32).clamp(0.0, 1.0),
+                ])
+            } else if was_multitouch {
+                let count = mt.pointers.len();
+                if count >= 2 {
+                    let eng = w.engine.borrow();
+                    if let Some((dist, angle)) = mt.two_finger_metrics() {
+                        mt.initial_distance = dist;
+                        mt.initial_angle = angle;
+                    } else {
+                        mt.initial_distance = mt.spread_px().unwrap_or(1.0);
+                        mt.initial_angle = 0.0;
                     }
-                    log::info!("[gesture] multitouch-2 end");
+                    mt.initial_bpm = eng.params.bpm.get();
+                    mt.initial_detune = eng.params.detune_cents.get();
+                    mt.initial_centroid = mt.centroid_px().unwrap_or(mt.initial_centroid);
+                    mt.motion_px = 0.0;
+                    mt.last_ripple_motion = 0.0;
+                } else {
+                    mt.reset_gesture();
                 }
-
-                w.mouse_state.borrow_mut().down = false;
-                ev.prevent_default();
-                return;
+                None
+            } else {
+                None
             }
+        };
+
+        if let Some(uv) = multitouch_release_uv {
+            w.queue_ripple(uv, 0.78);
+            w.mouse_state.borrow_mut().down = false;
+            log::info!("[gesture] multitouch surface end");
+            ev.prevent_default();
+            return;
         }
 
         if was_multitouch {
-            // If a multi-touch gesture has lost enough fingers, reset so the
-            // remaining pointer(s) don't keep being treated as part of that gesture.
-            {
-                let mut mt = w.multi_touch.borrow_mut();
-                let count = mt.pointers.len();
-                let needs_reset =
-                    gesture_min_pointers(mt.gesture_kind).is_some_and(|min| count < min);
-                if needs_reset {
-                    mt.reset_gesture();
-                }
-            }
             ev.prevent_default();
             return;
         }
@@ -643,6 +641,8 @@ fn wire_pointerup(w: &InputWiring) {
         }
 
         if !had_pointer_gesture {
+            w.mouse_state.borrow_mut().down = false;
+            ev.prevent_default();
             return;
         }
 
@@ -759,72 +759,6 @@ fn wire_pointerup(w: &InputWiring) {
     closure.forget();
 }
 
-/// Handle 3-finger swipe release: horizontal → cycle root, vertical → cycle mode.
-fn handle_three_finger_release(w: InputWiring, initial_centroid: [f32; 2], final_pos: [f32; 2]) {
-    let dx = final_pos[0] - initial_centroid[0];
-    let dy = final_pos[1] - initial_centroid[1];
-    let dist = (dx * dx + dy * dy).sqrt();
-
-    if dist < THREE_FINGER_SWIPE_THRESHOLD_PX {
-        log::info!("[gesture] multitouch-3 end (no swipe, below threshold)");
-        return;
-    }
-
-    let horizontal = dx.abs() > dy.abs();
-
-    if horizontal {
-        // Swipe left/right → cycle root note
-        let direction: i32 = if dx > 0.0 { 1 } else { -1 };
-        let mut eng = w.engine.borrow_mut();
-        let current_root = eng.params.root_midi;
-        let current_idx = ROOTS_MUSICAL_ORDER
-            .iter()
-            .position(|&r| r == current_root)
-            .unwrap_or(0);
-        let new_idx =
-            (current_idx as i32 + direction).rem_euclid(ROOTS_MUSICAL_ORDER.len() as i32) as usize;
-        eng.params.root_midi = ROOTS_MUSICAL_ORDER[new_idx];
-        let voice_len = eng.voices.len();
-        for i in 0..voice_len {
-            eng.reseed_voice(i, None);
-        }
-        drop(eng);
-        log::info!(
-            "[gesture] multitouch-3 swipe {} root={}",
-            if direction > 0 { "right" } else { "left" },
-            ROOTS_MUSICAL_ORDER[new_idx]
-        );
-    } else {
-        // Swipe up/down → cycle mode
-        // Down = next mode (positive index), Up = previous mode
-        let direction: i32 = if dy > 0.0 { 1 } else { -1 };
-        let mut eng = w.engine.borrow_mut();
-        let current_scale = eng.params.scale;
-        let current_idx = MODES_ORDER
-            .iter()
-            .position(|&m| m == current_scale)
-            .unwrap_or(0);
-        let new_idx =
-            (current_idx as i32 + direction).rem_euclid(MODES_ORDER.len() as i32) as usize;
-        eng.params.scale = MODES_ORDER[new_idx];
-        let voice_len = eng.voices.len();
-        for i in 0..voice_len {
-            eng.reseed_voice(i, None);
-        }
-        drop(eng);
-        log::info!(
-            "[gesture] multitouch-3 swipe {} mode={}",
-            if direction > 0 { "down" } else { "up" },
-            MODE_NAMES[new_idx]
-        );
-    }
-
-    update_hint_from_engine(&w);
-
-    // Visual burst
-    w.bump_gesture(0.85, 0.65);
-}
-
 // ─────────────────────────── pointercancel ───────────────────────────
 
 fn wire_pointercancel(w: &InputWiring) {
@@ -836,10 +770,8 @@ fn wire_pointercancel(w: &InputWiring) {
         {
             let mut mt = w.multi_touch.borrow_mut();
             mt.pointers.remove(&pid);
-            let count = mt.pointers.len();
-            let needs_reset =
-                gesture_min_pointers(mt.gesture_kind).map_or(count == 0, |min| count < min);
-            if needs_reset {
+            mt.current_centroid = mt.centroid_px();
+            if mt.pointers.len() < 2 {
                 mt.reset_gesture();
             }
         }
@@ -862,36 +794,12 @@ fn wire_pointercancel(w: &InputWiring) {
 
 // ─────────────────────────── helpers ───────────────────────────
 
-/// Update the hint overlay from current engine state.
-fn update_hint_from_engine(w: &InputWiring) {
-    if let Some(window) = web::window() {
-        if let Some(document) = window.document() {
-            let eng = w.engine.borrow();
-            let scale_name = crate::core::scale_name(eng.params.scale);
-            overlay::update_hint(
-                &document,
-                eng.params.detune_cents.get(),
-                eng.params.bpm.get(),
-                scale_name,
-            );
-            overlay::show_hint(&document);
-        }
-    }
-}
-
-/// Minimum simultaneous pointers a multitouch gesture needs to stay active,
-/// or `None` for [`TouchGestureKind::None`] (which has no finger requirement).
-fn gesture_min_pointers(kind: TouchGestureKind) -> Option<usize> {
-    match kind {
-        TouchGestureKind::TwoFingerPinchRotate => Some(2),
-        TouchGestureKind::ThreeFingerSwipe => Some(3),
-        TouchGestureKind::FourFingerTap => Some(4),
-        TouchGestureKind::FiveFingerTap => Some(5),
-        TouchGestureKind::None => None,
-    }
-}
-
 fn mode_for_vertical_band(band: usize) -> (&'static [f32], &'static str) {
     let idx = band.min(MODES_ORDER.len() - 1);
     (MODES_ORDER[idx], MODE_NAMES[idx])
+}
+
+#[inline]
+fn lerp(current: f32, target: f32, alpha: f32) -> f32 {
+    current + (target - current) * alpha.clamp(0.0, 1.0)
 }

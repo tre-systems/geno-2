@@ -6,6 +6,12 @@ pub(crate) struct VoicePacked {
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct TouchPacked {
+    pub(crate) uv_intensity_slot: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct WavesUniforms {
     pub(crate) resolution: [f32; 2],
     pub(crate) time: f32,
@@ -17,13 +23,18 @@ pub(crate) struct WavesUniforms {
     pub(crate) ripple_uv: [f32; 2],
     pub(crate) ripple_t0: f32,
     pub(crate) ripple_amp: f32,
+    pub(crate) touches: [TouchPacked; crate::input::MAX_TOUCH_POINTS],
+    pub(crate) touch_count: f32,
+    pub(crate) touch_energy: f32,
+    pub(crate) _pad: [f32; 2],
 }
 
 // POD layout guards: these structs are the Rust side of the uniform contract in
 // shaders/waves.wgsl and must stay byte-compatible. The asserts fail the build if
 // a field is added or reordered without updating the shader's `Uniforms` to match.
 const _: () = assert!(std::mem::size_of::<VoicePacked>() == 16);
-const _: () = assert!(std::mem::size_of::<WavesUniforms>() == 96);
+const _: () = assert!(std::mem::size_of::<TouchPacked>() == 16);
+const _: () = assert!(std::mem::size_of::<WavesUniforms>() == 192);
 
 pub(crate) struct WavesResources {
     pub(crate) pipeline: wgpu::RenderPipeline,

@@ -6,7 +6,7 @@ main = "worker.js"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
-html_handling = "auto-trailing-slash"
+html_handling = "none"
 not_found_handling = "single-page-application"
 # Run worker.js before asset serving so its Cache-Control headers apply.
 run_worker_first = true

@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "description": "Geno-2: generative audiovisual instrument built with Rust, WebAssembly, WebGPU, and WebAudio",
   "scripts": {
-    "build": "wasm-pack build --target web --out-dir pkg --out-name app_web --release && node scripts/gen-env.js && rm -rf dist && mkdir -p dist/pkg dist/control && cp pkg/app_web.js dist/pkg/ && cp pkg/app_web_bg.wasm dist/pkg/ && cp pkg/env.js dist/pkg/env.js && cp index.html dist/index.html && cp favicon.svg dist/favicon.svg && cp control.html dist/control.html && cp control.html dist/control/index.html && cp _headers dist/_headers",
+    "build": "wasm-pack build --target web --out-dir pkg --out-name app_web --release && node scripts/gen-env.js && rm -rf dist && mkdir -p dist/pkg dist/control && cp pkg/app_web.js dist/pkg/ && cp pkg/app_web_bg.wasm dist/pkg/ && cp pkg/env.js dist/pkg/env.js && cp pkg/sentry-config.js dist/pkg/sentry-config.js && cp sentry.js dist/sentry.js && cp index.html dist/index.html && cp favicon.svg dist/favicon.svg && cp control.html dist/control.html && cp control.html dist/control/index.html && cp _headers dist/_headers",
     "dev": "npm run build && wrangler dev --local --persist-to .wrangler/state --live-reload",
     "deploy": "npm run build && wrangler deploy",
     "test": "node web-test.js",

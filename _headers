@@ -1,0 +1,32 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/control
+  Cache-Control: no-cache
+
+/control/
+  Cache-Control: no-cache
+
+/control.html
+  Cache-Control: no-cache
+
+/control/index.html
+  Cache-Control: no-cache
+
+/pkg/env.js
+  Cache-Control: no-cache
+
+/pkg/app_web.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/pkg/app_web_bg.wasm
+  Cache-Control: public, max-age=31536000, immutable

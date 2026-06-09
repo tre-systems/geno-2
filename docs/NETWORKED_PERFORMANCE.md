@@ -13,10 +13,17 @@ For current iPad/live use:
   affect the instrument locally.
 - With no linked panel, the instrument remains fully local.
 
+The deployed Worker returns `404` for `/room/*` unless `RELAY_ENABLED=true` is
+set. Leave it disabled in production unless there is a specific reason to
+restore server-relayed display clients.
+
 The legacy relay still has tests and protocol guards:
 
 - `npm run relay:test` — auth, abuse guards, broadcast, state replay.
-- `npm run cf-relay:test` — the Durable Object under `wrangler dev`.
+- `npm run cf-relay:test` — the Durable Object under `wrangler dev`, with
+  `RELAY_ENABLED:true` and a test `RELAY_KEY`.
 
-If the relay is reintroduced publicly, keep the `RELAY_KEY`, origin checks,
-per-room limits, and edge rate limiting described in the relay protocol code.
+If the relay is reintroduced publicly, keep `RELAY_ENABLED` opt-in, require
+`RELAY_KEY`, preserve origin checks and per-room limits, and add an edge rate
+limiting rule on `/room/*` so room-spawning floods are shed before they create
+Durable Object/WebSocket work.

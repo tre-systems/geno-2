@@ -6,20 +6,24 @@ main = "worker.js"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
-html_handling = "none"
+html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"
-# Run worker.js before asset serving so its Cache-Control headers apply.
-run_worker_first = true
+# Only the disabled-by-default legacy relay needs Worker code. Static app and
+# control-panel assets are served directly by Cloudflare Assets.
+run_worker_first = ["/room/*"]
 
 [vars]
 ENVIRONMENT = "production"
+# Keep the legacy WebSocket/Durable Object relay closed in production. Set this
+# to "true" only for a deliberate relay experiment with RELAY_KEY configured.
+RELAY_ENABLED = "false"
 
 [[routes]]
 pattern = "geno-2.tre.systems/*"
 zone_name = "tre.systems"
 
-# Performance relay: one Room Durable Object per room id holds the broadcast
-# state and fans parameter changes out to connected display clients.
+# Legacy performance relay. The Worker only routes /room/* to this binding when
+# RELAY_ENABLED="true"; the current control-panel flow does not need it.
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"

@@ -10,7 +10,7 @@ Ordered, honest next work, highest-impact first. No status history — see git f
 
 - **Adaptive render resolution.** Feed the per-frame `dt` into an EMA → render-scale controller: render the scene into a scaled HDR target and let the composite upscale, to hold 60 fps on weak GPUs. It only activates under load, so verify the scaled path with a forced low scale. (`src/render.rs`, `src/frame.rs`)
 - **Dependency modernization.** A few crates trail the latest release — glam, the wasm-bindgen / web-sys / js-sys family, and rand / getrandom. The wasm-bindgen and glam bumps are mechanical; bumping `rand` / `getrandom` changes the generated note sequences, so retune by ear (it dovetails with *Drop `rand` / `getrandom`* in P3). (`Cargo.toml`)
-- **Assert the cache headers.** A `Cache-Control` test on the worker's `?v=`-tagged assets vs the `env.js` / HTML entry — the immutable-vs-`no-cache` logic is the riskiest deploy surface and is untested. (`worker.js`)
+- **Assert the asset headers.** A deployed or Wrangler-driven check should verify `_headers`: security headers on HTML/assets, immutable `Cache-Control` on the JS/wasm assets, and `no-cache` on `env.js` / HTML. (`_headers`, `web-test.js`)
 
 ## P3 — polish & housekeeping
 

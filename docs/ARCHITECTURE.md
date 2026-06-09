@@ -187,7 +187,7 @@ The instrument can be driven from a separate local panel without rendering contr
 ## Build & Deploy
 
 - `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, and the JS + wasm + `index.html` + `favicon.svg` are copied into `dist/`.
-- `worker.js` runs before asset serving (`run_worker_first`) and sets `Cache-Control`: the JS glue and wasm — both loaded with a `?v=<git-sha>` tag (`index.html` versions the wasm URL too) — are `immutable`, while the `env.js` version pointer and the HTML entry are `no-cache`, so a deploy is picked up immediately while the heavy assets cache forever.
+- Cloudflare Assets serves the app directly; `run_worker_first` is limited to `/room/*`, and that legacy relay path returns 404 unless `RELAY_ENABLED=true`. Static `_headers` sets browser hardening headers, keeps HTML and `env.js` revalidated, and marks the JS glue/wasm immutable. `index.html` still versions both the JS and wasm URLs with `?v=<git-sha>`, so a deploy is picked up immediately while the heavy assets cache efficiently.
 - `npm run dev` builds and serves locally; `npm run deploy` builds and ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR and deploys to Cloudflare on `main` when the Cloudflare secrets are present.
 
 ## What This Architecture Deliberately Does Not Include

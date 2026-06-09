@@ -1,8 +1,12 @@
-// Cloudflare Worker: serves the static app and hosts the performance relay.
+// Cloudflare Worker: serves the static app and, only when explicitly enabled,
+// hosts the legacy performance relay.
 //
 // Security / cost model — the relay is a PUBLIC WebSocket endpoint, locked down
 // in depth (no platform offers a hard spend cap, so pair this with a Cloudflare
 // billing alert):
+//   * The relay is disabled unless RELAY_ENABLED is exactly "true". The current
+//     performance flow uses local browser messaging, so production should leave
+//     this off to prevent Durable Object/WebSocket spend from random traffic.
 //   * Control + broadcast require the shared secret RELAY_KEY. Unauthenticated
 //     sockets are read-only viewers; if RELAY_KEY is unset the relay is LOCKED
 //     (fail closed). Set it with `wrangler secret put RELAY_KEY`. The key is
@@ -181,6 +185,9 @@ export default {
     const url = new URL(request.url);
     const room = url.pathname.match(/^\/room\/([\w-]{1,64})$/);
     if (room) {
+      if (env.RELAY_ENABLED !== "true") {
+        return new Response("not found", { status: 404 });
+      }
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("expected websocket", { status: 426 });
       }

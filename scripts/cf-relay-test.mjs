@@ -6,12 +6,26 @@
 
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { WebSocket } from "ws";
 
 const PORT = 8799;
-const wrangler = spawn("npx", ["wrangler", "dev", "--port", String(PORT), "--var", "RELAY_KEY:test-secret"], {
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "1" },
-});
+const wrangler = spawn(
+  "npx",
+  [
+    "wrangler",
+    "dev",
+    "--port",
+    String(PORT),
+    "--var",
+    "RELAY_ENABLED:true",
+    "--var",
+    "RELAY_KEY:test-secret",
+  ],
+  {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "1" },
+  },
+);
 const log = (d) => process.stderr.write("[wrangler] " + d);
 wrangler.stdout.on("data", log);
 wrangler.stderr.on("data", log);
@@ -23,19 +37,21 @@ const check = (n, ok) => {
 };
 const open = (ws) =>
   new Promise((res, rej) => {
-    ws.addEventListener("open", res, { once: true });
-    ws.addEventListener("error", () => rej(new Error("ws error")), { once: true });
+    ws.once("open", res);
+    ws.once("error", () => rej(new Error("ws error")));
   });
 const waitMsg = (ws, pred) =>
   new Promise((res, rej) => {
     const to = setTimeout(() => rej(new Error("timeout")), 5000);
-    ws.addEventListener("message", (ev) => {
-      const m = JSON.parse(ev.data);
+    const on = (data) => {
+      const m = JSON.parse(data.toString());
       if (pred(m)) {
         clearTimeout(to);
+        ws.off("message", on);
         res(m);
       }
-    });
+    };
+    ws.on("message", on);
   });
 async function waitHttp(url, ms) {
   const t0 = Date.now();
@@ -59,8 +75,9 @@ try {
     const base = `ws://localhost:${PORT}/room/test`;
     const control = new WebSocket(base);
     const display = new WebSocket(base);
+    const displayState = waitMsg(display, (m) => m.t === "state");
     await Promise.all([open(control), open(display)]);
-    await waitMsg(display, (m) => m.t === "state");
+    await displayState;
 
     const authed = waitMsg(control, (m) => m.t === "auth");
     control.send(JSON.stringify({ t: "auth", key: "test-secret" }));
@@ -71,8 +88,9 @@ try {
     check("DO broadcasts param to display", (await got).v === 140);
 
     const late = new WebSocket(base);
+    const lateState = waitMsg(late, (m) => m.t === "state");
     await open(late);
-    const st = (await waitMsg(late, (m) => m.t === "state")).state;
+    const st = (await lateState).state;
     check("DO replays state to late joiner", st.bpm === 140);
 
     control.close();

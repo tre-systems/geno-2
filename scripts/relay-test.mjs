@@ -6,29 +6,32 @@
 // failure. Run: `node scripts/relay-test.mjs`.
 
 import { startRelay } from "./relay.mjs";
+import { WebSocket } from "ws";
 
 const KEY = "test-secret";
-const open = (ws) => new Promise((r) => ws.addEventListener("open", r, { once: true }));
+const open = (ws) => new Promise((r) => ws.once("open", r));
 const wait = (ws, pred) =>
   new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error("timeout")), 4000);
-    ws.addEventListener("message", (ev) => {
-      const msg = JSON.parse(ev.data);
+    const on = (data) => {
+      const msg = JSON.parse(data.toString());
       if (pred(msg)) {
         clearTimeout(to);
+        ws.off("message", on);
         resolve(msg);
       }
-    });
+    };
+    ws.on("message", on);
   });
 const never = (ws, pred, ms = 400) =>
   new Promise((resolve) => {
     let hit = false;
-    const on = (ev) => {
-      if (pred(JSON.parse(ev.data))) hit = true;
+    const on = (data) => {
+      if (pred(JSON.parse(data.toString()))) hit = true;
     };
-    ws.addEventListener("message", on);
+    ws.on("message", on);
     setTimeout(() => {
-      ws.removeEventListener("message", on);
+      ws.off("message", on);
       resolve(!hit);
     }, ms);
   });
@@ -45,8 +48,9 @@ const base = `ws://localhost:${relay.port}/room/test`;
 try {
   const control = new WebSocket(base);
   const display = new WebSocket(base);
+  const displayState = wait(display, (m) => m.t === "state");
   await Promise.all([open(control), open(display)]);
-  await wait(display, (m) => m.t === "state");
+  await displayState;
 
   // 1) Unauthenticated control cannot drive the room.
   const noBroadcast = never(display, (m) => m.t === "set");
@@ -89,8 +93,9 @@ try {
 
   // 7) Unauthenticated sockets cannot send gesture events.
   const viewer = new WebSocket(base);
+  const viewerState = wait(viewer, (m) => m.t === "state");
   await open(viewer);
-  await wait(viewer, (m) => m.t === "state");
+  await viewerState;
   const evUnauth = wait(viewer, (m) => m.t === "error");
   const evNoBroadcast = never(display, (m) => m.t === "ev" && m.e === "ripple");
   viewer.send(JSON.stringify({ t: "ev", e: "ripple", u: 0.2, v: 0.2 }));
@@ -111,10 +116,11 @@ try {
 
   // 7c) Repeated wrong keys close the socket (anti-brute-force lockout).
   const brute = new WebSocket(base);
+  const bruteState = wait(brute, (m) => m.t === "state");
   await open(brute);
-  await wait(brute, (m) => m.t === "state");
+  await bruteState;
   const bruteClosed = new Promise((resolve) => {
-    brute.addEventListener("close", () => resolve(true), { once: true });
+    brute.once("close", () => resolve(true));
     setTimeout(() => resolve(false), 4000);
   });
   for (let i = 0; i < 10; i++) brute.send(JSON.stringify({ t: "auth", key: "wrong" }));
@@ -122,9 +128,10 @@ try {
 
   // 8) Late joiner gets the accumulated valid state — no ev replay, no junk.
   const late = new WebSocket(base);
+  const lateState = wait(late, (m) => m.t === "state");
   await open(late);
   const noEvReplay = never(late, (m) => m.t === "ev");
-  const state = (await wait(late, (m) => m.t === "state")).state;
+  const state = (await lateState).state;
   check("late joiner state is valid", state.bpm === 120 && state.evil === undefined);
   check("ev is not replayed to late joiners", await noEvReplay);
 

@@ -47,8 +47,8 @@ digraph AudioGraph {
   ];
 
   // ---- Generation (Rust core) ----
-  ENG  [label=<<B>MusicEngine</B><BR/><FONT POINT-SIZE="15">eighth-note scheduler</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-  NOTE [label=<<B>NoteEvent</B><BR/><FONT POINT-SIZE="15">voice · frequency · velocity · dur</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  ENG  [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>MusicEngine</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">eighth-note scheduler</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  NOTE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>NoteEvent</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">voice · frequency · velocity · dur</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // ---- Per-note synthesis ----
   subgraph cluster_note {
@@ -62,8 +62,8 @@ digraph AudioGraph {
       labelloc=t, labeljust=l,
       color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.8, margin=18
     ];
-    OSC [label=<<B>OscillatorNode ×2</B><BR/><FONT POINT-SIZE="15">waveform + detuned chorus</FONT>>];
-    ENV [label=<<B>env GainNode</B><BR/><FONT POINT-SIZE="15">attack · sustain · release</FONT>>];
+    OSC [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>OscillatorNode ×2</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">waveform + detuned chorus</FONT></TD></TR></TABLE>>];
+    ENV [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>env GainNode</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">attack · sustain · release</FONT></TD></TR></TABLE>>];
     OSC -> ENV;
   }
 
@@ -80,7 +80,7 @@ digraph AudioGraph {
       color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.8, margin=18
     ];
     VG  [label=<<B>Voice Gain</B>>];
-    PAN [label=<<B>PannerNode</B><BR/><FONT POINT-SIZE="15">HRTF · inverse distance</FONT>>];
+    PAN [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>PannerNode</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">HRTF · inverse distance</FONT></TD></TR></TABLE>>];
     VG -> PAN;
   }
 
@@ -96,7 +96,7 @@ digraph AudioGraph {
       color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.8, margin=18
     ];
     RIN  [label=<<B>reverb_in</B>>];
-    CONV [label=<<B>ConvolverNode</B><BR/><FONT POINT-SIZE="15">procedural impulse</FONT>>];
+    CONV [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>ConvolverNode</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">procedural impulse</FONT></TD></TR></TABLE>>];
     RWET [label=<<B>reverb_wet</B>>];
     RIN -> CONV -> RWET;
   }
@@ -117,7 +117,7 @@ digraph AudioGraph {
     DTONE [label=<<B>lowpass tone</B>>];
     DWET  [label=<<B>delay_wet</B>>];
     DIN -> DLY -> DTONE -> DWET;
-    DTONE -> DLY [label="feedback", color="#a5610a", fontcolor="#a5610a", constraint=false];
+    DTONE -> DLY [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">feedback</FONT></TD></TR></TABLE>>, color="#a5610a", fontcolor="#a5610a", constraint=false];
   }
 
   // ---- Master chain ----
@@ -132,28 +132,28 @@ digraph AudioGraph {
       labelloc=t, labeljust=l,
       color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.8, margin=18
     ];
-    MASTER [label=<<B>master_gain</B><BR/><FONT POINT-SIZE="15">sum bus</FONT>>];
-    TONE   [label=<<B>highpass → lowpass</B><BR/><FONT POINT-SIZE="15">tone shaping</FONT>>];
-    SAT    [label=<<B>WaveShaper</B><BR/><FONT POINT-SIZE="15">arctan · wet/dry</FONT>>];
+    MASTER [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>master_gain</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">sum bus</FONT></TD></TR></TABLE>>];
+    TONE   [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>highpass → lowpass</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">tone shaping</FONT></TD></TR></TABLE>>];
+    SAT    [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>WaveShaper</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">arctan · wet/dry</FONT></TD></TR></TABLE>>];
     COMP   [label=<<B>Compressor + makeup</B>>];
     MASTER -> TONE -> SAT -> COMP;
   }
 
   // ---- Terminal + visual tap ----
-  DEST [label=<<B>destination</B><BR/><FONT POINT-SIZE="15">speakers</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
-  ANALYSER [label=<<B>AnalyserNode</B><BR/><FONT POINT-SIZE="15">level → visuals</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+  DEST [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>destination</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">speakers</FONT></TD></TR></TABLE>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+  ANALYSER [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>AnalyserNode</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">level → visuals</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
   // ---- Signal flow ----
   ENG -> NOTE;
   NOTE -> OSC [lhead=cluster_note];
-  ENV -> VG  [lhead=cluster_voice, label="voice"];
-  ENV -> RIN [lhead=cluster_reverb, label="reverb send", style=dashed, color="#6b7280", fontcolor="#6b7280"];
-  ENV -> DIN [lhead=cluster_delay, label="delay send", style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  ENV -> VG  [lhead=cluster_voice, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">voice</FONT></TD></TR></TABLE>>];
+  ENV -> RIN [lhead=cluster_reverb, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">reverb send</FONT></TD></TR></TABLE>>, style=dashed, color="#6b7280", fontcolor="#6b7280"];
+  ENV -> DIN [lhead=cluster_delay, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">delay send</FONT></TD></TR></TABLE>>, style=dashed, color="#6b7280", fontcolor="#6b7280"];
   PAN  -> MASTER [ltail=cluster_voice];
   RWET -> MASTER [ltail=cluster_reverb];
   DWET -> MASTER [ltail=cluster_delay];
   COMP -> DEST [ltail=cluster_master];
-  MASTER -> ANALYSER [label="tap", style=dashed, color="#22865a", fontcolor="#22865a", constraint=false];
+  MASTER -> ANALYSER [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">tap</FONT></TD></TR></TABLE>>, style=dashed, color="#22865a", fontcolor="#22865a", constraint=false];
 
   // Keep the three parallel buses on one rank under the envelope.
   { rank=same; VG; RIN; DIN; }

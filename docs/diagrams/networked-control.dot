@@ -58,7 +58,7 @@ digraph NetworkedControl {
       labelloc=t, labeljust=l,
       color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    P1 [label=<<B>legacy relay control</B><BR/><FONT POINT-SIZE="15">tempo · detune · root · scale · seed · volume · pause</FONT><BR/><FONT POINT-SIZE="13" COLOR="#496f9f">unlocks relay control with the shared RELAY_KEY</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    P1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>legacy relay control</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">tempo · detune · root · scale · seed · volume · pause</FONT><BR/><FONT POINT-SIZE="13" COLOR="#496f9f">unlocks relay control with the shared RELAY_KEY</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
   }
 
   // ---- Relay ----
@@ -73,11 +73,11 @@ digraph NetworkedControl {
       labelloc=t, labeljust=l,
       color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    GATE [label=<<B>auth + abuse gate</B><BR/><FONT POINT-SIZE="14">RELAY_KEY required to send — fail-closed if unset</FONT><BR/><FONT POINT-SIZE="14">param whitelist + ranges · per-socket rate/size · room cap · same-origin</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00", penwidth=3.0, width=3.7];
-    R1 [label=<<B>Room Durable Object</B><BR/><FONT POINT-SIZE="15">hibernatable WebSockets · fan-out to every peer</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
-    STORE [label=<<B>durable storage</B><BR/><FONT POINT-SIZE="15">accumulated params (throttled)</FONT>>, shape=cylinder, fillcolor="#e6fffb:#ffffff", color="#0f766e", width=2.0, height=0.9];
-    GATE -> R1 [label="validated set"];
-    R1 -> STORE [dir=both, label="persist / restore", minlen=1];
+    GATE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>auth + abuse gate</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">RELAY_KEY required to send — fail-closed if unset</FONT><BR/><FONT POINT-SIZE="14">param whitelist + ranges · per-socket rate/size · room cap · same-origin</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00", penwidth=3.0, width=3.7];
+    R1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Room Durable Object</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">hibernatable WebSockets · fan-out to every peer</FONT></TD></TR></TABLE>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+    STORE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>durable storage</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">accumulated params (throttled)</FONT></TD></TR></TABLE>>, shape=cylinder, fillcolor="#e6fffb:#ffffff", color="#0f766e", width=2.0, height=0.9];
+    GATE -> R1 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">validated set</FONT></TD></TR></TABLE>>];
+    R1 -> STORE [dir=both, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">persist / restore</FONT></TD></TR></TABLE>>, minlen=1];
   }
 
   // ---- Display clients ----
@@ -92,18 +92,18 @@ digraph NetworkedControl {
       labelloc=t, labeljust=l,
       color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    D1 [label=<<B>legacy display client</B><BR/><FONT POINT-SIZE="15">index.html · auto-reconnect WS · tap to start</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    D2 [label=<<B>live MusicEngine</B><BR/><FONT POINT-SIZE="15">control_set_* · reseed_all · scale_for_name</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    D3 [label=<<B>local speakers + &lt;canvas&gt;</B><BR/><FONT POINT-SIZE="15">own WebAudio + WebGPU, rendered on-device</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
-    DMORE [label=<<B>…more display clients</B><BR/><FONT POINT-SIZE="15">each renders independently</FONT>>, fillcolor="#f3f6fb:#ffffff", color="#9aa6b8", fontcolor="#6b7280", style="rounded,filled,dashed"];
+    D1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>legacy display client</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">index.html · auto-reconnect WS · tap to start</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    D2 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>live MusicEngine</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">control_set_* · reseed_all · scale_for_name</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    D3 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>local speakers + &lt;canvas&gt;</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">own WebAudio + WebGPU, rendered on-device</FONT></TD></TR></TABLE>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+    DMORE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>…more display clients</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">each renders independently</FONT></TD></TR></TABLE>>, fillcolor="#f3f6fb:#ffffff", color="#9aa6b8", fontcolor="#6b7280", style="rounded,filled,dashed"];
 
-    D1 -> D2 [label="apply k → setter"];
-    D2 -> D3 [label="sound + picture"];
+    D1 -> D2 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">apply k → setter</FONT></TD></TR></TABLE>>];
+    D2 -> D3 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">sound + picture</FONT></TD></TR></TABLE>>];
   }
 
   // ---- Cross-cluster edges ----
-  P1 -> GATE [lhead=cluster_relay, label=<<B>{t:"auth",key}</B> then <B>{t:"set",k,v}</B><BR/>over WebSocket>];
+  P1 -> GATE [lhead=cluster_relay, label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>{t:"auth",key}</B> then <B>{t:"set",k,v}</B></TD></TR><TR><TD CELLPADDING="4">over WebSocket</TD></TR></TABLE>>];
   GATE -> P1 [label=<unauthorized → <B>{t:"error"}</B>>, color="#c53030", fontcolor="#c53030", style=dashed, constraint=false];
   R1 -> D1 [ltail=cluster_relay, label=<broadcast <B>{t:"set"}</B><BR/>+ replay <B>{t:"state"}</B> on join — read-only, no key>];
-  R1 -> DMORE [label="broadcast", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  R1 -> DMORE [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">broadcast</FONT></TD></TR></TABLE>>, color="#6b7280", fontcolor="#6b7280", style=dashed];
 }

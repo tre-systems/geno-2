@@ -57,7 +57,7 @@ digraph SystemOverview {
       labelloc=t, labeljust=l,
       color="#99d5cf", fillcolor="#f0fdfa", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    H1 [label=<<B>Cloudflare Worker</B><BR/><FONT POINT-SIZE="15">worker.js · dist/: app_web.js + _bg.wasm + index.html</FONT>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
+    H1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Cloudflare Worker</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">worker.js · dist/: app_web.js + _bg.wasm + index.html</FONT></TD></TR></TABLE>>, fillcolor="#e6fffb:#ffffff", color="#0f766e"];
   }
 
   // ---- Browser ----
@@ -72,9 +72,9 @@ digraph SystemOverview {
       labelloc=t, labeljust=l,
       color="#b9d8ff", fillcolor="#f5faff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    B1 [label=<<B>index.html bootstrap</B><BR/><FONT POINT-SIZE="15">checks navigator.gpu + AudioContext, imports app_web.js</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    B2 [label=<<B>requestAnimationFrame loop</B><BR/><FONT POINT-SIZE="15">FrameContext::frame, every frame</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    B3 [label=<<B>Input</B><BR/><FONT POINT-SIZE="15">pointer · keyboard · multitouch</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>index.html bootstrap</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">checks navigator.gpu + AudioContext, imports app_web.js</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B2 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>requestAnimationFrame loop</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">FrameContext::frame, every frame</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    B3 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Input</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">pointer · keyboard · multitouch</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
     B1 -> B2 [style=invis];
     B2 -> B3 [style=invis];
   }
@@ -91,9 +91,9 @@ digraph SystemOverview {
       labelloc=t, labeljust=l,
       color="#b8e5c8", fillcolor="#f4fbf6", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    C1 [label=<<B>wasm_app</B><BR/><FONT POINT-SIZE="15">#[wasm_bindgen(start)] · composition root</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    C2 [label=<<B>MusicEngine</B><BR/><FONT POINT-SIZE="15">eighth-note scheduler → NoteEvents</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    C3 [label=<<B>FrameContext</B><BR/><FONT POINT-SIZE="15">schedule · couple state · render</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>wasm_app</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">#[wasm_bindgen(start)] · composition root</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C2 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>MusicEngine</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">eighth-note scheduler → NoteEvents</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    C3 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>FrameContext</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">schedule · couple state · render</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
     C1 -> C2 [style=invis];
   }
 
@@ -109,7 +109,7 @@ digraph SystemOverview {
       labelloc=t, labeljust=l,
       color="#f0d79a", fillcolor="#fffbf0", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    A1 [label=<<B>Audio graph</B><BR/><FONT POINT-SIZE="15">voices → reverb/delay → master tone/sat/comp</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    A1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Audio graph</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">voices → reverb/delay → master tone/sat/comp</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
   }
 
   // ---- GPU ----
@@ -124,28 +124,28 @@ digraph SystemOverview {
       labelloc=t, labeljust=l,
       color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=22
     ];
-    G1 [label=<<B>Waves pass</B><BR/><FONT POINT-SIZE="15">waves.wgsl · swirl · voice influence · ripples → HDR</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    G2 [label=<<B>Bloom + composite</B><BR/><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · ACES · grain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G1 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Waves pass</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">waves.wgsl · swirl · voice influence · ripples → HDR</FONT></TD></TR></TABLE>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    G2 [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Bloom + composite</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">post.wgsl · bright-pass · blur · ACES · grain</FONT></TD></TR></TABLE>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
   }
 
   // ---- Outputs ----
-  SPK [label=<<B>speakers</B><BR/><FONT POINT-SIZE="15">AudioContext.destination</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
-  CANVAS [label=<<B>&lt;canvas&gt;</B><BR/><FONT POINT-SIZE="15">on-screen frame</FONT>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+  SPK [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>speakers</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">AudioContext.destination</FONT></TD></TR></TABLE>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
+  CANVAS [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>&lt;canvas&gt;</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">on-screen frame</FONT></TD></TR></TABLE>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.0];
 
   // ---- Edges ----
-  H1 -> B1 [lhead=cluster_browser, label="serves page + WASM"];
+  H1 -> B1 [lhead=cluster_browser, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">serves page + WASM</FONT></TD></TR></TABLE>>];
 
-  B1 -> C1 [lhead=cluster_core, label="init"];
-  B2 -> C3 [label="frame()"];
-  B3 -> C3 [label="pointer · keys", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  B1 -> C1 [lhead=cluster_core, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">init</FONT></TD></TR></TABLE>>];
+  B2 -> C3 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">frame()</FONT></TD></TR></TABLE>>];
+  B3 -> C3 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">pointer · keys</FONT></TD></TR></TABLE>>, color="#6b7280", fontcolor="#6b7280", style=dashed];
 
-  C1 -> C3 [label="owns / drives"];
-  C2 -> C3 [label="NoteEvents"];
+  C1 -> C3 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">owns / drives</FONT></TD></TR></TABLE>>];
+  C2 -> C3 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">NoteEvents</FONT></TD></TR></TABLE>>];
 
-  C3 -> A1 [lhead=cluster_audio, label="schedule + trigger notes"];
-  C3 -> G1 [lhead=cluster_gpu, label="uniforms per frame"];
+  C3 -> A1 [lhead=cluster_audio, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">schedule + trigger notes</FONT></TD></TR></TABLE>>];
+  C3 -> G1 [lhead=cluster_gpu, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">uniforms per frame</FONT></TD></TR></TABLE>>];
 
-  A1 -> SPK [ltail=cluster_audio, label="render to destination"];
-  G1 -> G2 [label="HDR scene"];
-  G2 -> CANVAS [ltail=cluster_gpu, label="composite to swapchain"];
+  A1 -> SPK [ltail=cluster_audio, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">render to destination</FONT></TD></TR></TABLE>>];
+  G1 -> G2 [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">HDR scene</FONT></TD></TR></TABLE>>];
+  G2 -> CANVAS [ltail=cluster_gpu, label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">composite to swapchain</FONT></TD></TR></TABLE>>];
 }

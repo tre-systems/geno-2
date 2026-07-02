@@ -44,18 +44,18 @@ digraph FrameLoop {
     arrowsize=0.78
   ];
 
-  START [label=<<B>rAF tick</B><BR/><FONT POINT-SIZE="14">FrameContext::frame(dt)</FONT>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+  START [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>rAF tick</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">FrameContext::frame(dt)</FONT></TD></TR></TABLE>>, shape=box, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
   PAUSED [label=<<B>paused?</B>>, shape=diamond, style=filled, fillcolor="#ffffff", color="#1f2f46", penwidth=2.4, width=1.6, height=1.05, fontsize=16];
 
-  TICK [label=<<B>schedule ahead</B><BR/><FONT POINT-SIZE="14">generate_step → start oscillators at audio-clock time</FONT>>];
+  TICK [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>schedule ahead</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">generate_step → start oscillators at audio-clock time</FONT></TD></TR></TABLE>>];
 
   // ---- couple state ----
-  PULSE [label=<<B>couple sounded notes</B><BR/><FONT POINT-SIZE="14">drain just-played → pulse energy; decay gesture</FONT>>];
-  SWIRL [label=<<B>update swirl</B><BR/><FONT POINT-SIZE="14">damped spring from pointer / centroid</FONT>>];
-  FXMOD [label=<<B>modulate FX</B><BR/><FONT POINT-SIZE="14">reverb · delay · saturation</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  SPAT [label=<<B>spatialize voices</B><BR/><FONT POINT-SIZE="14">positions → panners + sends + level</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-  LISTENER [label=<<B>align listener</B><BR/><FONT POINT-SIZE="14">AudioListener → fixed camera</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  PULSE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>couple sounded notes</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">drain just-played → pulse energy; decay gesture</FONT></TD></TR></TABLE>>];
+  SWIRL [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>update swirl</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">damped spring from pointer / centroid</FONT></TD></TR></TABLE>>];
+  FXMOD [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>modulate FX</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">reverb · delay · saturation</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  SPAT [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>spatialize voices</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">positions → panners + sends + level</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+  LISTENER [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>align listener</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">AudioListener → fixed camera</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
 
   // ---- render ----
   subgraph cluster_render {
@@ -64,9 +64,9 @@ digraph FrameLoop {
       labelloc=t, labeljust=l,
       color="#d6c6ee", fillcolor="#fbf8ff", style="rounded,filled", penwidth=1.8, margin=18
     ];
-    WAVES [label=<<B>waves pass</B><BR/><FONT POINT-SIZE="14">swirl · voices · ripples → HDR</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    BLOOM [label=<<B>bloom</B><BR/><FONT POINT-SIZE="14">bright-pass · blur H · blur V</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
-    COMPOSITE [label=<<B>composite + present</B><BR/><FONT POINT-SIZE="14">ACES · vignette · grain → swapchain</FONT>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    WAVES [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>waves pass</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">swirl · voices · ripples → HDR</FONT></TD></TR></TABLE>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    BLOOM [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>bloom</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">bright-pass · blur H · blur V</FONT></TD></TR></TABLE>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
+    COMPOSITE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>composite + present</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">ACES · vignette · grain → swapchain</FONT></TD></TR></TABLE>>, fillcolor="#f5f3ff:#ffffff", color="#7c3aed"];
     WAVES -> BLOOM -> COMPOSITE;
   }
 
@@ -74,11 +74,11 @@ digraph FrameLoop {
 
   // ---- flow ----
   START -> PAUSED;
-  PAUSED -> TICK [label="running"];
-  PAUSED -> PULSE [label="paused (skip)", color="#6b7280", fontcolor="#6b7280", style=dashed];
+  PAUSED -> TICK [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">running</FONT></TD></TR></TABLE>>];
+  PAUSED -> PULSE [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">paused (skip)</FONT></TD></TR></TABLE>>, color="#6b7280", fontcolor="#6b7280", style=dashed];
   TICK -> PULSE;
   PULSE -> SWIRL -> FXMOD -> SPAT -> LISTENER;
   LISTENER -> WAVES [lhead=cluster_render];
   COMPOSITE -> NEXT [ltail=cluster_render];
-  NEXT -> START [label="next rAF", constraint=false, color="#6b7280", fontcolor="#6b7280", style=dashed];
+  NEXT -> START [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#dfe3e9" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#6b7280">next rAF</FONT></TD></TR></TABLE>>, constraint=false, color="#6b7280", fontcolor="#6b7280", style=dashed];
 }

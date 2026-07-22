@@ -45,7 +45,7 @@
     "http-server": "^14.1.1",
     "npm-check-updates": "^18.0.2",
     "puppeteer": "^24.16.1",
-    "wasm-pack": "^0.13.1",
+    "wasm-pack": "^0.15.0",
     "wrangler": "^4.28.1",
     "ws": "^8.21.0"
   }

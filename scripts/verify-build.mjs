@@ -73,6 +73,7 @@ for (const token of [
 for (const token of [
   "Content-Security-Policy:",
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  "img-src 'self' data: blob: https://storage.ko-fi.com",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",

@@ -46,6 +46,7 @@ async function gotoWithRetry(
     const t = m.text();
     logs.push(t);
     console.log("[console]", t);
+    if (t.includes("Content Security Policy")) runtimeErrors.push(`CSP: ${t}`);
   });
   page.on("pageerror", (error) => {
     runtimeErrors.push(error.message);
@@ -381,6 +382,10 @@ async function gotoWithRetry(
   controlPage.on("pageerror", (error) => {
     runtimeErrors.push(`control: ${error.message}`);
     console.error("[control pageerror]", error.message);
+  });
+  controlPage.on("console", (message) => {
+    const text = message.text();
+    if (text.includes("Content Security Policy")) runtimeErrors.push(`control CSP: ${text}`);
   });
   await gotoWithRetry(controlPage, new URL("/control/", TARGET_URL).href);
   await controlPage.waitForSelector("#panel-code", { timeout: 10000 });

@@ -73,7 +73,7 @@ Requires Node.js 22 and Rust stable; `npm install` pulls in `wasm-pack`.
 
 - `npm install`
 - `npm run dev` — build and serve locally (needs a WebGPU-capable browser).
-- `npm run check` — the full gate: format, clippy, tests, diagram render, wasm build, and a Puppeteer smoke test. `npm run check:rust` is the fast inner loop.
+- `npm run check` — the full gate: format, clippy, Rust tests, JavaScript syntax, diagram render, verified deploy artifact, and a Puppeteer smoke test. `npm run check:rust` is the fast inner loop.
 
 ## Deploy
 

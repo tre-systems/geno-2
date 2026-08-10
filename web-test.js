@@ -40,11 +40,16 @@ async function gotoWithRetry(
 
   const page = await browser.newPage();
   const logs = [];
+  const runtimeErrors = [];
 
   page.on("console", (m) => {
     const t = m.text();
     logs.push(t);
     console.log("[console]", t);
+  });
+  page.on("pageerror", (error) => {
+    runtimeErrors.push(error.message);
+    console.error("[pageerror]", error.message);
   });
 
   await gotoWithRetry(page, TARGET_URL);
@@ -283,13 +288,26 @@ async function gotoWithRetry(
     await page.keyboard.press("KeyT");
     await new Promise((r) => setTimeout(r, 120));
   } else {
-    console.log(
-      "[note] engine not started in CI (init incomplete); skipping engine assertions"
-    );
+    console.log("[note] audio engine unavailable; checking explicit degraded state");
   }
 
-  // Performance monitoring (only if engine started)
-  if (engineStarted) {
+  const renderState = await page.evaluate(() => ({
+    audioErrorVisible:
+      getComputedStyle(document.getElementById("audio-error")).display !== "none",
+    webGpuErrorVisible:
+      getComputedStyle(document.getElementById("no-webgpu")).display !== "none",
+  }));
+  const gpuInitialized = logs.some((line) =>
+    line.includes("WebGPU initialized successfully")
+  );
+
+  if (!engineStarted && !renderState.audioErrorVisible)
+    throw new Error("audio engine neither initialized nor showed its error state");
+  if (!gpuInitialized && !renderState.webGpuErrorVisible)
+    throw new Error("renderer neither initialized nor showed its WebGPU error state");
+
+  // Animation timing is meaningful only when the actual renderer started.
+  if (gpuInitialized) {
     console.log("[perf] measuring frame rate performance...");
 
     const perfMetrics = await page.evaluate(() => {
@@ -358,6 +376,29 @@ async function gotoWithRetry(
   // Basic assertions
   const hasWebGPU = await page.evaluate(() => !!navigator.gpu);
   console.log("WEBGPU", hasWebGPU);
+
+  const controlPage = await browser.newPage();
+  controlPage.on("pageerror", (error) => {
+    runtimeErrors.push(`control: ${error.message}`);
+    console.error("[control pageerror]", error.message);
+  });
+  await gotoWithRetry(controlPage, new URL("/control/", TARGET_URL).href);
+  await controlPage.waitForSelector("#panel-code", { timeout: 10000 });
+  const controlState = await controlPage.evaluate(() => ({
+    code: document.getElementById("panel-code")?.textContent || "",
+    controlsDisabled: document.getElementById("controls")?.disabled,
+    title: document.title,
+  }));
+  if (!/^\d{6}$/.test(controlState.code))
+    throw new Error(`control panel generated an invalid pairing code: ${controlState.code}`);
+  if (controlState.controlsDisabled !== true)
+    throw new Error("unpaired control panel should keep its controls disabled");
+  if (controlState.title !== "Geno-2 — Control")
+    throw new Error(`unexpected control panel title: ${controlState.title}`);
+  await controlPage.close();
+
+  if (runtimeErrors.length)
+    throw new Error(`browser runtime errors:\n- ${runtimeErrors.join("\n- ")}`);
 
   await browser.close();
 

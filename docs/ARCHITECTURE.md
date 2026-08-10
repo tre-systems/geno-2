@@ -58,6 +58,9 @@ control.html          # Separate panel (/control): pairing code, tempo, detune, 
 offline.html          # Headless harness that drives the offline WAV render
 worker.js             # Cloudflare asset worker (versioned-asset cache)
 scripts/gen-env.js    # Stamps pkg/env.js with the build's git short SHA
+scripts/assemble-dist.mjs  # Builds a clean deploy root from explicit source/generated files
+scripts/verify-build.mjs   # Verifies deploy files, versioning, metadata, and security/cache policy
+scripts/check-js.mjs       # Syntax-checks repository-owned JavaScript
 scripts/relay.mjs     # Optional Node dev relay for legacy relay tooling
 scripts/render-offline.mjs  # Drives the offline WAV render in headless Chrome
 web-test.js           # Puppeteer smoke test (boot, WebGPU, keyboard, FPS)
@@ -186,9 +189,9 @@ The instrument can be driven from a separate local panel without rendering contr
 
 ## Build & Deploy
 
-- `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, and the JS + wasm + HTML, favicon, crawler files, and social preview are copied into `dist/`.
+- `npm run build` → `wasm-pack build --target web --release`, then `scripts/gen-env.js` stamps `pkg/env.js` with the git short SHA, `scripts/assemble-dist.mjs` copies an explicit allowlist into a clean `dist/`, and `scripts/verify-build.mjs` checks required files, versioned WASM loading, discoverability metadata, generated configuration, and browser/cache policy before the artifact can ship.
 - Cloudflare Assets serves the app directly; `run_worker_first` is limited to `/room/*`, and that legacy relay path returns 404 unless `RELAY_ENABLED=true`. Static `_headers` sets browser hardening headers, keeps HTML and `env.js` revalidated, and marks the JS glue/wasm immutable. `index.html` still versions both the JS and wasm URLs with `?v=<git-sha>`, so a deploy is picked up immediately while the heavy assets cache efficiently.
-- `npm run dev` builds and serves locally; `npm run deploy` builds and ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR and deploys to Cloudflare on `main` when the Cloudflare secrets are present.
+- `npm run dev` builds and serves locally; `npm run deploy` builds and ships it. CI (`.github/workflows/ci.yml`) runs the full gate on every push/PR: Rust tests, repository-owned JavaScript parsing, diagram validation, a verified production artifact, and a browser smoke of both the instrument and separate control route. The smoke accepts either a working WebGPU renderer or the intentional unsupported-WebGPU message, and never reports animation timing as render performance when no renderer started. Passing `main` builds deploy to Cloudflare when the Cloudflare secrets are present.
 
 ## What This Architecture Deliberately Does Not Include
 

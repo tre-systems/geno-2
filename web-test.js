@@ -49,6 +49,59 @@ async function gotoWithRetry(
 
   await gotoWithRetry(page, TARGET_URL);
 
+  const discoverability = await page.evaluate(async () => {
+    const meta = (selector) => document.querySelector(selector)?.getAttribute("content") || "";
+    const canonical = document.querySelector('link[rel="canonical"]')?.href || "";
+    const [robotsResponse, sitemapResponse, previewResponse] = await Promise.all([
+      fetch("/robots.txt"),
+      fetch("/sitemap.xml"),
+      fetch("/social-preview.png"),
+    ]);
+    return {
+      description: meta('meta[name="description"]'),
+      canonical,
+      ogTitle: meta('meta[property="og:title"]'),
+      ogDescription: meta('meta[property="og:description"]'),
+      ogImage: meta('meta[property="og:image"]'),
+      twitterCard: meta('meta[name="twitter:card"]'),
+      robotsStatus: robotsResponse.status,
+      robotsType: robotsResponse.headers.get("content-type") || "",
+      robotsBody: await robotsResponse.text(),
+      sitemapStatus: sitemapResponse.status,
+      sitemapType: sitemapResponse.headers.get("content-type") || "",
+      sitemapBody: await sitemapResponse.text(),
+      previewStatus: previewResponse.status,
+      previewType: previewResponse.headers.get("content-type") || "",
+    };
+  });
+
+  if (!discoverability.description) throw new Error("missing meta description");
+  if (discoverability.canonical !== "https://geno-2.tre.systems/")
+    throw new Error(`unexpected canonical URL: ${discoverability.canonical}`);
+  if (!discoverability.ogTitle || !discoverability.ogDescription)
+    throw new Error("missing Open Graph metadata");
+  if (discoverability.ogImage !== "https://geno-2.tre.systems/social-preview.png")
+    throw new Error(`unexpected Open Graph image: ${discoverability.ogImage}`);
+  if (discoverability.twitterCard !== "summary_large_image")
+    throw new Error("missing Twitter card metadata");
+  if (
+    discoverability.robotsStatus !== 200 ||
+    !discoverability.robotsType.includes("text/plain") ||
+    !discoverability.robotsBody.includes("Sitemap: https://geno-2.tre.systems/sitemap.xml")
+  )
+    throw new Error("robots.txt is missing or invalid");
+  if (
+    discoverability.sitemapStatus !== 200 ||
+    !discoverability.sitemapType.includes("xml") ||
+    !discoverability.sitemapBody.includes("<loc>https://geno-2.tre.systems/</loc>")
+  )
+    throw new Error("sitemap.xml is missing or invalid");
+  if (
+    discoverability.previewStatus !== 200 ||
+    !discoverability.previewType.includes("image/png")
+  )
+    throw new Error("social preview image is missing or invalid");
+
   await page.waitForSelector("#app-canvas", { timeout: 10000 });
 
   const box = await page.$eval("#app-canvas", (el) => {

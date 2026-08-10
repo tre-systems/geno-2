@@ -78,3 +78,5 @@ Requires Node.js 22 and Rust stable; `npm install` pulls in `wasm-pack`.
 ## Deploy
 
 `npm run deploy` builds and ships to Cloudflare Workers. CI also deploys on every push to `main` when `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are configured.
+
+The production build also publishes `robots.txt`, `sitemap.xml`, and the social preview image used by the root page's search and sharing metadata.

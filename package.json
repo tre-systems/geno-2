@@ -47,10 +47,10 @@
   "homepage": "https://github.com/tre-systems/geno-2#readme",
   "devDependencies": {
     "http-server": "^14.1.1",
-    "npm-check-updates": "^18.0.2",
-    "puppeteer": "^25.9.0",
+    "npm-check-updates": "^18.3.1",
+    "puppeteer": "^25.11.0",
     "wasm-pack": "^0.15.0",
     "wrangler": "^4.28.1",
-    "ws": "^8.21.0"
+    "ws": "^8.21.3"
   }
 }
